@@ -336,7 +336,7 @@ char *enter_repo(char *path, int strict)
 
 	if (access("objects", X_OK) == 0 && access("refs", X_OK) == 0 &&
 	    validate_headref("HEAD") == 0) {
-		setenv(GIT_DIR_ENVIRONMENT, ".", 1);
+		set_git_dir(".");
 		check_repository_format();
 		return path;
 	}
@@ -610,7 +610,7 @@ int daemon_avoid_alias(const char *p)
 	/*
 	 * This resurrects the belts and suspenders paranoia check by HPA
 	 * done in <435560F7.4080006@zytor.com> thread, now enter_repo()
-	 * does not do getcwd() based path canonicalizations.
+	 * does not do getcwd() based path canonicalization.
 	 *
 	 * sl becomes true immediately after seeing '/' and continues to
 	 * be true as long as dots continue after that without intervening

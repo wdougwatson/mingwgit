@@ -317,7 +317,7 @@ static void handle_internal_command(int argc, const char **argv)
 		{ "fsck-objects", cmd_fsck, RUN_SETUP },
 		{ "gc", cmd_gc, RUN_SETUP },
 		{ "get-tar-commit-id", cmd_get_tar_commit_id },
-		{ "grep", cmd_grep, RUN_SETUP | USE_PAGER },
+		{ "grep", cmd_grep, USE_PAGER },
 		{ "hash-object", cmd_hash_object },
 		{ "help", cmd_help },
 		{ "index-pack", cmd_index_pack },
@@ -527,7 +527,7 @@ int main(int argc, const char **argv)
 			break;
 		if (was_alias) {
 			fprintf(stderr, "Expansion of alias '%s' failed; "
-				"'%s' is not a git-command\n",
+				"'%s' is not a git command\n",
 				cmd, argv[0]);
 			exit(1);
 		}

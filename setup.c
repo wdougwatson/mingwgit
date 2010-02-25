@@ -206,7 +206,7 @@ int is_inside_work_tree(void)
 }
 
 /*
- * set_work_tree() is only ever called if you set GIT_DIR explicitely.
+ * set_work_tree() is only ever called if you set GIT_DIR explicitly.
  * The old behaviour (which we retain here) is to set the work tree root
  * to the cwd, unless overridden by the config, the command line, or
  * GIT_WORK_TREE.
@@ -404,9 +404,9 @@ const char *setup_git_directory_gently(int *nongit_ok)
 				inside_work_tree = 0;
 			if (offset != len) {
 				cwd[offset] = '\0';
-				setenv(GIT_DIR_ENVIRONMENT, cwd, 1);
+				set_git_dir(cwd);
 			} else
-				setenv(GIT_DIR_ENVIRONMENT, ".", 1);
+				set_git_dir(".");
 			check_repository_format_gently(nongit_ok);
 			return NULL;
 		}

@@ -2893,6 +2893,8 @@ int diff_opt_parse(struct diff_options *options, const char **av, int ac)
 		;
 	else if (!prefixcmp(arg, "--output=")) {
 		options->file = fopen(arg + strlen("--output="), "w");
+		if (!options->file)
+			die_errno("Could not open '%s'", arg + strlen("--output="));
 		options->close_file = 1;
 	} else
 		return 0;
@@ -3642,7 +3644,7 @@ static void diffcore_skip_stat_unmatch(struct diff_options *diffopt)
 		struct diff_filepair *p = q->queue[i];
 
 		/*
-		 * 1. Entries that come from stat info dirtyness
+		 * 1. Entries that come from stat info dirtiness
 		 *    always have both sides (iow, not create/delete),
 		 *    one side of the object name is unknown, with
 		 *    the same mode and size.  Keep the ones that

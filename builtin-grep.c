@@ -14,6 +14,7 @@
 #include "userdiff.h"
 #include "grep.h"
 #include "quote.h"
+#include "dir.h"
 
 #ifndef NO_PTHREADS
 #include "thread-utils.h"
@@ -408,15 +409,25 @@ static int pathspec_matches(const char **paths, const char *name, int max_depth)
 	return 0;
 }
 
+static void *lock_and_read_sha1_file(const unsigned char *sha1, enum object_type *type, unsigned long *size)
+{
+	void *data;
+
+	if (use_threads) {
+		read_sha1_lock();
+		data = read_sha1_file(sha1, type, size);
+		read_sha1_unlock();
+	} else {
+		data = read_sha1_file(sha1, type, size);
+	}
+	return data;
+}
+
 static void *load_sha1(const unsigned char *sha1, unsigned long *size,
 		       const char *name)
 {
 	enum object_type type;
-	char *data;
-
-	read_sha1_lock();
-	data = read_sha1_file(sha1, &type, size);
-	read_sha1_unlock();
+	void *data = lock_and_read_sha1_file(sha1, &type, size);
 
 	if (!data)
 		error("'%s': unable to read %s", name, sha1_to_hex(sha1));
@@ -605,10 +616,7 @@ static int grep_tree(struct grep_opt *opt, const char **paths,
 			void *data;
 			unsigned long size;
 
-			read_sha1_lock();
-			data = read_sha1_file(entry.sha1, &type, &size);
-			read_sha1_unlock();
-
+			data = lock_and_read_sha1_file(entry.sha1, &type, &size);
 			if (!data)
 				die("unable to read tree (%s)",
 				    sha1_to_hex(entry.sha1));
@@ -643,6 +651,24 @@ static int grep_object(struct grep_opt *opt, const char **paths,
 		return hit;
 	}
 	die("unable to grep from object of type %s", typename(obj->type));
+}
+
+static int grep_directory(struct grep_opt *opt, const char **paths)
+{
+	struct dir_struct dir;
+	int i, hit = 0;
+
+	memset(&dir, 0, sizeof(dir));
+	setup_standard_excludes(&dir);
+
+	fill_directory(&dir, paths);
+	for (i = 0; i < dir.nr; i++) {
+		hit |= grep_file(opt, dir.entries[i]->name);
+		if (hit && opt->status_only)
+			break;
+	}
+	free_grep_patterns(opt);
+	return hit;
 }
 
 static int context_callback(const struct option *opt, const char *arg,
@@ -739,9 +765,12 @@ int cmd_grep(int argc, const char **argv, const char *prefix)
 	const char **paths = NULL;
 	int i;
 	int dummy;
+	int nongit = 0, use_index = 1;
 	struct option options[] = {
 		OPT_BOOLEAN(0, "cached", &cached,
 			"search in index instead of in the work tree"),
+		OPT_BOOLEAN(0, "index", &use_index,
+			"--no-index finds in contents not managed by git"),
 		OPT_GROUP(""),
 		OPT_BOOLEAN('v', "invert-match", &opt.invert,
 			"show non-matching lines"),
@@ -824,6 +853,8 @@ int cmd_grep(int argc, const char **argv, const char *prefix)
 		OPT_END()
 	};
 
+	prefix = setup_git_directory_gently(&nongit);
+
 	/*
 	 * 'git grep -h', unlike 'git grep -h <pattern>', is a request
 	 * to show usage information and exit.
@@ -860,6 +891,20 @@ int cmd_grep(int argc, const char **argv, const char *prefix)
 			     PARSE_OPT_KEEP_DASHDASH |
 			     PARSE_OPT_STOP_AT_NON_OPTION |
 			     PARSE_OPT_NO_INTERNAL_HELP);
+
+	if (use_index && nongit)
+		/* die the same way as if we did it at the beginning */
+		setup_git_directory();
+
+	/*
+	 * skip a -- separator; we know it cannot be
+	 * separating revisions from pathnames if
+	 * we haven't even had any patterns yet
+	 */
+	if (argc > 0 && !opt.pattern_list && !strcmp(argv[0], "--")) {
+		argv++;
+		argc--;
+	}
 
 	/* First unrecognized non-option token */
 	if (argc > 0 && !opt.pattern_list) {
@@ -920,6 +965,18 @@ int cmd_grep(int argc, const char **argv, const char *prefix)
 		paths = xcalloc(2, sizeof(const char *));
 		paths[0] = prefix;
 		paths[1] = NULL;
+	}
+
+	if (!use_index) {
+		int hit;
+		if (cached)
+			die("--cached cannot be used with --no-index.");
+		if (list.nr)
+			die("--no-index cannot be used with revs.");
+		hit = grep_directory(&opt, paths);
+		if (use_threads)
+			hit |= wait_all();
+		return !hit;
 	}
 
 	if (!list.nr) {
