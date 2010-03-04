@@ -2826,6 +2826,15 @@ int diff_opt_parse(struct diff_options *options, const char **av, int ac)
 		DIFF_OPT_SET(options, FOLLOW_RENAMES);
 	else if (!strcmp(arg, "--color"))
 		DIFF_OPT_SET(options, COLOR_DIFF);
+	else if (!prefixcmp(arg, "--color=")) {
+		int value = git_config_colorbool(NULL, arg+8, -1);
+		if (value == 0)
+			DIFF_OPT_CLR(options, COLOR_DIFF);
+		else if (value > 0)
+			DIFF_OPT_SET(options, COLOR_DIFF);
+		else
+			return error("option `color' expects \"always\", \"auto\", or \"never\"");
+	}
 	else if (!strcmp(arg, "--no-color"))
 		DIFF_OPT_CLR(options, COLOR_DIFF);
 	else if (!strcmp(arg, "--color-words")) {
@@ -3520,6 +3529,29 @@ void diff_flush(struct diff_options *options)
 		for (i = 0; i < q->nr; i++)
 			diff_summary(options->file, q->queue[i]);
 		separator++;
+	}
+
+	if (output_format & DIFF_FORMAT_NO_OUTPUT &&
+	    DIFF_OPT_TST(options, EXIT_WITH_STATUS) &&
+	    DIFF_OPT_TST(options, DIFF_FROM_CONTENTS)) {
+		/*
+		 * run diff_flush_patch for the exit status. setting
+		 * options->file to /dev/null should be safe, becaue we
+		 * aren't supposed to produce any output anyway.
+		 */
+		if (options->close_file)
+			fclose(options->file);
+		options->file = fopen("/dev/null", "w");
+		if (!options->file)
+			die_errno("Could not open /dev/null");
+		options->close_file = 1;
+		for (i = 0; i < q->nr; i++) {
+			struct diff_filepair *p = q->queue[i];
+			if (check_pair_status(p))
+				diff_flush_patch(p, options);
+			if (options->found_changes)
+				break;
+		}
 	}
 
 	if (output_format & DIFF_FORMAT_PATCH) {
