@@ -388,6 +388,15 @@ static inline enum object_type object_type(unsigned int mode)
 #define GIT_NOTES_REF_ENVIRONMENT "GIT_NOTES_REF"
 #define GIT_NOTES_DEFAULT_REF "refs/notes/commits"
 
+/*
+ * Repository-local GIT_* environment variables
+ * The array is NULL-terminated to simplify its usage in contexts such
+ * environment creation or simple walk of the list.
+ * The number of non-NULL entries is available as a macro.
+ */
+#define LOCAL_REPO_ENV_SIZE 8
+extern const char *const local_repo_env[LOCAL_REPO_ENV_SIZE + 1];
+
 extern int is_bare_repository_cfg;
 extern int is_bare_repository(void);
 extern int is_inside_git_dir(void);
@@ -641,6 +650,10 @@ int git_mkstemp(char *path, size_t n, const char *template);
 
 int git_mkstemps(char *path, size_t n, const char *template, int suffix_len);
 
+/* set default permissions by passing mode arguments to open(2) */
+int git_mkstemps_mode(char *pattern, int suffix_len, int mode);
+int git_mkstemp_mode(char *pattern, int mode);
+
 /*
  * NOTE NOTE NOTE!!
  *
@@ -675,6 +688,7 @@ int normalize_path_copy(char *dst, const char *src);
 int longest_ancestor_length(const char *path, const char *prefix_list);
 char *strip_path_suffix(const char *path, const char *suffix);
 int daemon_avoid_alias(const char *path);
+int offset_1st_component(const char *path);
 
 /* Read and unpack a sha1 file into memory, write memory to a sha1 file */
 extern int sha1_object_info(const unsigned char *, unsigned long *);

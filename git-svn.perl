@@ -351,6 +351,7 @@ information.
 }
 
 sub version {
+	::_req_svn();
 	print "git-svn version $VERSION (svn $SVN::Core::VERSION)\n";
 	exit 0;
 }
@@ -369,7 +370,6 @@ sub do_git_init_db {
 		command_noisy(@init_db);
 		$_repository = Git->repository(Repository => ".git");
 	}
-	command_noisy('config', 'core.autocrlf', 'false');
 	my $set;
 	my $pfx = "svn-remote.$Git::SVN::default_repo_id";
 	foreach my $i (keys %icv) {
@@ -1102,6 +1102,7 @@ sub cmd_info {
 	if ($@) {
 		$result .= "Repository Root: (offline)\n";
 	}
+	::_req_svn();
 	$result .= "Repository UUID: $uuid\n" unless $diff_status eq "A" &&
 		($SVN::Core::VERSION le '1.5.4' || $file_type ne "dir");
 	$result .= "Revision: " . ($diff_status eq "A" ? 0 : $rev) . "\n";
