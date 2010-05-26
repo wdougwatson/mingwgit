@@ -31,6 +31,9 @@ all::
 # Define EXPATDIR=/foo/bar if your expat header and library files are in
 # /foo/bar/include and /foo/bar/lib directories.
 #
+# Define HAVE_PATHS_H if you have paths.h and want to use the default PATH
+# it specifies.
+#
 # Define NO_D_INO_IN_DIRENT if you don't have d_ino in your struct dirent.
 #
 # Define NO_D_TYPE_IN_DIRENT if your platform defines DT_UNKNOWN but lacks
@@ -366,6 +369,8 @@ SCRIPT_PERL += git-relink.perl
 SCRIPT_PERL += git-send-email.perl
 SCRIPT_PERL += git-svn.perl
 
+SCRIPT_PYTHON += git-remote-testgit.py
+
 SCRIPTS = $(patsubst %.sh,%,$(SCRIPT_SH)) \
 	  $(patsubst %.perl,%,$(SCRIPT_PERL)) \
 	  $(patsubst %.py,%,$(SCRIPT_PYTHON)) \
@@ -486,6 +491,7 @@ LIB_H += log-tree.h
 LIB_H += mailmap.h
 LIB_H += merge-recursive.h
 LIB_H += notes.h
+LIB_H += notes-cache.h
 LIB_H += object.h
 LIB_H += pack.h
 LIB_H += pack-refs.h
@@ -575,6 +581,7 @@ LIB_OBJS += merge-file.o
 LIB_OBJS += merge-recursive.o
 LIB_OBJS += name-hash.o
 LIB_OBJS += notes.o
+LIB_OBJS += notes-cache.o
 LIB_OBJS += object.o
 LIB_OBJS += pack-check.o
 LIB_OBJS += pack-refs.o
@@ -735,10 +742,12 @@ EXTLIBS =
 ifeq ($(uname_S),Linux)
 	NO_STRLCPY = YesPlease
 	NO_MKSTEMPS = YesPlease
+	HAVE_PATHS_H = YesPlease
 endif
 ifeq ($(uname_S),GNU/kFreeBSD)
 	NO_STRLCPY = YesPlease
 	NO_MKSTEMPS = YesPlease
+	HAVE_PATHS_H = YesPlease
 endif
 ifeq ($(uname_S),UnixWare)
 	CC = cc
@@ -867,6 +876,7 @@ ifeq ($(uname_S),FreeBSD)
 		NO_STRTOUMAX = YesPlease
 	endif
 	PYTHON_PATH = /usr/local/bin/python
+	HAVE_PATHS_H = YesPlease
 endif
 ifeq ($(uname_S),OpenBSD)
 	NO_STRCASESTR = YesPlease
@@ -875,6 +885,7 @@ ifeq ($(uname_S),OpenBSD)
 	NEEDS_LIBICONV = YesPlease
 	BASIC_CFLAGS += -I/usr/local/include
 	BASIC_LDFLAGS += -L/usr/local/lib
+	HAVE_PATHS_H = YesPlease
 endif
 ifeq ($(uname_S),NetBSD)
 	ifeq ($(shell expr "$(uname_R)" : '[01]\.'),2)
@@ -884,6 +895,7 @@ ifeq ($(uname_S),NetBSD)
 	BASIC_LDFLAGS += -L/usr/pkg/lib $(CC_LD_DYNPATH)/usr/pkg/lib
 	USE_ST_TIMESPEC = YesPlease
 	NO_MKSTEMPS = YesPlease
+	HAVE_PATHS_H = YesPlease
 endif
 ifeq ($(uname_S),AIX)
 	NO_STRCASESTR=YesPlease
@@ -904,6 +916,7 @@ ifeq ($(uname_S),GNU)
 	# GNU/Hurd
 	NO_STRLCPY=YesPlease
 	NO_MKSTEMPS = YesPlease
+	HAVE_PATHS_H = YesPlease
 endif
 ifeq ($(uname_S),IRIX)
 	NO_SETENV = YesPlease
@@ -1353,6 +1366,10 @@ else
 	LIB_OBJS += thread-utils.o
 endif
 
+ifdef HAVE_PATHS_H
+	BASIC_CFLAGS += -DHAVE_PATHS_H
+endif
+
 ifdef DIR_HAS_BSD_GROUP_SEMANTICS
 	COMPAT_CFLAGS += -DDIR_HAS_BSD_GROUP_SEMANTICS
 endif
@@ -1620,13 +1637,8 @@ $(patsubst %.py,%,$(SCRIPT_PYTHON)): % : %.py
 	INSTLIBDIR=`MAKEFLAGS= $(MAKE) -C git_remote_helpers -s \
 		--no-print-directory prefix='$(prefix_SQ)' DESTDIR='$(DESTDIR_SQ)' \
 		instlibdir` && \
-	sed -e '1{' \
-	    -e '	s|#!.*python|#!$(PYTHON_PATH_SQ)|' \
-	    -e '}' \
-	    -e 's|^import sys.*|&; \\\
-	           import os; \\\
-	           sys.path.insert(0, os.getenv("GITPYTHONLIB",\
-	                                        "@@INSTLIBDIR@@"));|' \
+	sed -e '1s|#!.*python|#!$(PYTHON_PATH_SQ)|' \
+	    -e 's|\(os\.getenv("GITPYTHONLIB"\)[^)]*)|\1,"@@INSTLIBDIR@@")|' \
 	    -e 's|@@INSTLIBDIR@@|'"$$INSTLIBDIR"'|g' \
 	    $@.py >$@+ && \
 	chmod +x $@+ && \
@@ -2004,6 +2016,9 @@ endif
 	  done; } && \
 	./check_bindir "z$$bindir" "z$$execdir" "$$bindir/git-add$X"
 
+install-gitweb:
+	$(MAKE) -C gitweb install
+
 install-doc:
 	$(MAKE) -C Documentation install
 
@@ -2098,7 +2113,7 @@ clean:
 	$(RM) $(htmldocs).tar.gz $(manpages).tar.gz
 	$(MAKE) -C Documentation/ clean
 ifndef NO_PERL
-	$(RM) gitweb/gitweb.cgi gitweb/gitweb.min.*
+	$(MAKE) -C gitweb clean
 	$(MAKE) -C perl clean
 endif
 ifndef NO_PYTHON

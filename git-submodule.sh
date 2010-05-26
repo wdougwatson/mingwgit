@@ -21,6 +21,8 @@ command=
 branch=
 reference=
 cached=
+recursive=
+init=
 files=
 nofetch=
 update=
@@ -648,7 +650,7 @@ cmd_summary() {
 				range=$sha1_dst
 			fi
 			GIT_DIR="$name/.git" \
-			git log --pretty=oneline --first-parent $range | wc -l
+			git rev-list --first-parent $range -- | wc -l
 			)
 			total_commits=" ($(($total_commits + 0)))"
 			;;

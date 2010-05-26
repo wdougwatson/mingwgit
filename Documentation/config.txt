@@ -481,6 +481,8 @@ core.whitespace::
   error (enabled by default).
 * `indent-with-non-tab` treats a line that is indented with 8 or more
   space characters as an error (not enabled by default).
+* `tab-in-indent` treats a tab character in the initial indent part of
+  the line as an error (not enabled by default).
 * `blank-at-eof` treats blank lines added at the end of file as an error
   (enabled by default).
 * `trailing-space` is a short-hand to cover both `blank-at-eol` and
@@ -944,13 +946,19 @@ gc.pruneexpire::
 	unreachable objects immediately.
 
 gc.reflogexpire::
+gc.<pattern>.reflogexpire::
 	'git reflog expire' removes reflog entries older than
-	this time; defaults to 90 days.
+	this time; defaults to 90 days.  With "<pattern>" (e.g.
+	"refs/stash") in the middle the setting applies only to
+	the refs that match the <pattern>.
 
 gc.reflogexpireunreachable::
+gc.<ref>.reflogexpireunreachable::
 	'git reflog expire' removes reflog entries older than
 	this time and are not reachable from the current tip;
-	defaults to 30 days.
+	defaults to 30 days.  With "<pattern>" (e.g. "refs/stash")
+	in the middle, the setting applies only to the refs that
+	match the <pattern>.
 
 gc.rerereresolved::
 	Records of conflicted merge you resolved earlier are
@@ -1268,6 +1276,13 @@ log.date::
 	following alternatives: {relative,local,default,iso,rfc,short}.
 	See linkgit:git-log[1].
 
+log.decorate::
+	Print out the ref names of any commits that are shown by the log
+	command. If 'short' is specified, the ref name prefixes 'refs/heads/',
+	'refs/tags/' and 'refs/remotes/' will not be printed. If 'full' is
+	specified, the full ref name (including prefix) will be printed.
+	This is the same as the log commands '--decorate' option.
+
 log.showroot::
 	If true, the initial commit will be shown as a big creation event.
 	This is equivalent to a diff against an empty tree.
@@ -1359,10 +1374,6 @@ notes.rewrite.<command>::
 	automatically copies your notes from the original to the
 	rewritten commit.  Defaults to `true`, but see
 	"notes.rewriteRef" below.
-+
-This setting can be overridden with the `GIT_NOTES_REWRITE_REF`
-environment variable, which must be a colon separated list of refs or
-globs.
 
 notes.rewriteMode::
 	When copying notes during a rewrite (see the
@@ -1382,6 +1393,10 @@ notes.rewriteRef::
 +
 Does not have a default value; you must configure this variable to
 enable note rewriting.
++
+This setting can be overridden with the `GIT_NOTES_REWRITE_REF`
+environment variable, which must be a colon separated list of refs or
+globs.
 
 pack.window::
 	The size of the window used by linkgit:git-pack-objects[1] when no
@@ -1516,7 +1531,7 @@ receive.denyDeletes::
 	the ref. Use this to prevent such a ref deletion via a push.
 
 receive.denyCurrentBranch::
-	If set to true or "refuse", receive-pack will deny a ref update
+	If set to true or "refuse", git-receive-pack will deny a ref update
 	to the currently checked out branch of a non-bare repository.
 	Such a push is potentially dangerous because it brings the HEAD
 	out of sync with the index and working tree. If set to "warn",
@@ -1578,7 +1593,9 @@ remote.<name>.uploadpack::
 
 remote.<name>.tagopt::
 	Setting this value to \--no-tags disables automatic tag following when
-	fetching from remote <name>
+	fetching from remote <name>. Setting it to \--tags will fetch every
+	tag from remote <name>, even if they are not reachable from remote
+	branch heads.
 
 remote.<name>.vcs::
 	Setting this to a value <vcs> will cause git to interact with
@@ -1642,6 +1659,7 @@ sendemail.smtppass::
 sendemail.suppresscc::
 sendemail.suppressfrom::
 sendemail.to::
+sendemail.smtpdomain::
 sendemail.smtpserver::
 sendemail.smtpserverport::
 sendemail.smtpuser::

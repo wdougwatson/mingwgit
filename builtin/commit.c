@@ -66,7 +66,7 @@ static char *edit_message, *use_message;
 static char *author_name, *author_email, *author_date;
 static int all, edit_flag, also, interactive, only, amend, signoff;
 static int quiet, verbose, no_verify, allow_empty, dry_run, renew_authorship;
-static int no_post_rewrite;
+static int no_post_rewrite, allow_empty_message;
 static char *untracked_files_arg, *force_date;
 /*
  * The default commit message cleanup mode will remove the lines
@@ -83,6 +83,7 @@ static enum {
 static char *cleanup_arg;
 
 static int use_editor = 1, initial_commit, in_merge, include_status = 1;
+static int show_ignored_in_status;
 static const char *only_include_assumed;
 static struct strbuf message;
 
@@ -140,8 +141,14 @@ static struct option builtin_commit_options[] = {
 	OPT_BOOLEAN(0, "amend", &amend, "amend previous commit"),
 	OPT_BOOLEAN(0, "no-post-rewrite", &no_post_rewrite, "bypass post-rewrite hook"),
 	{ OPTION_STRING, 'u', "untracked-files", &untracked_files_arg, "mode", "show untracked files, optional modes: all, normal, no. (Default: all)", PARSE_OPT_OPTARG, NULL, (intptr_t)"all" },
-	OPT_BOOLEAN(0, "allow-empty", &allow_empty, "ok to record an empty change"),
 	/* end commit contents options */
+
+	{ OPTION_BOOLEAN, 0, "allow-empty", &allow_empty, NULL,
+	  "ok to record an empty change",
+	  PARSE_OPT_NOARG | PARSE_OPT_HIDDEN },
+	{ OPTION_BOOLEAN, 0, "allow-empty-message", &allow_empty_message, NULL,
+	  "ok to record a change with an empty message",
+	  PARSE_OPT_NOARG | PARSE_OPT_HIDDEN },
 
 	OPT_END()
 };
@@ -1017,6 +1024,7 @@ static int git_status_config(const char *k, const char *v, void *cb)
 int cmd_status(int argc, const char **argv, const char *prefix)
 {
 	struct wt_status s;
+	int fd;
 	unsigned char sha1[20];
 	static struct option builtin_status_options[] = {
 		OPT__VERBOSE(&verbose),
@@ -1031,6 +1039,8 @@ int cmd_status(int argc, const char **argv, const char *prefix)
 		  "mode",
 		  "show untracked files, optional modes: all, normal, no. (Default: all)",
 		  PARSE_OPT_OPTARG, NULL, (intptr_t)"all" },
+		OPT_BOOLEAN(0, "ignored", &show_ignored_in_status,
+			    "show ignored files"),
 		OPT_END(),
 	};
 
@@ -1044,12 +1054,21 @@ int cmd_status(int argc, const char **argv, const char *prefix)
 			     builtin_status_options,
 			     builtin_status_usage, 0);
 	handle_untracked_files_arg(&s);
-
+	if (show_ignored_in_status)
+		s.show_ignored_files = 1;
 	if (*argv)
 		s.pathspec = get_pathspec(prefix, argv);
 
 	read_cache_preload(s.pathspec);
 	refresh_index(&the_index, REFRESH_QUIET|REFRESH_UNMERGED, s.pathspec, NULL, NULL);
+
+	fd = hold_locked_index(&index_lock, 0);
+	if (0 <= fd) {
+		if (!write_cache(fd, active_cache, active_nr))
+			commit_locked_index(&index_lock);
+		rollback_lock_file(&index_lock);
+	}
+
 	s.is_initial = get_sha1(s.reference, sha1) ? 1 : 0;
 	s.in_merge = in_merge;
 	wt_status_collect(&s);
@@ -1293,7 +1312,7 @@ int cmd_commit(int argc, const char **argv, const char *prefix)
 
 	if (cleanup_mode != CLEANUP_NONE)
 		stripspace(&sb, cleanup_mode == CLEANUP_ALL);
-	if (message_is_empty(&sb)) {
+	if (message_is_empty(&sb) && !allow_empty_message) {
 		rollback_index_files();
 		fprintf(stderr, "Aborting commit due to empty commit message.\n");
 		exit(1);
