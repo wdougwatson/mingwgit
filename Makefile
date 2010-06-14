@@ -898,6 +898,7 @@ ifeq ($(uname_S),NetBSD)
 	HAVE_PATHS_H = YesPlease
 endif
 ifeq ($(uname_S),AIX)
+	DEFAULT_PAGER = more
 	NO_STRCASESTR=YesPlease
 	NO_MEMMEM = YesPlease
 	NO_MKDTEMP = YesPlease
@@ -1039,7 +1040,6 @@ ifneq (,$(findstring MINGW,$(uname_S)))
 	NO_STRTOUMAX = YesPlease
 	NO_MKDTEMP = YesPlease
 	NO_MKSTEMPS = YesPlease
-	SNPRINTF_RETURNS_BOGUS = YesPlease
 	NO_SVN_TESTS = YesPlease
 	NO_PERL_MAKEMAKER = YesPlease
 	RUNTIME_PREFIX = YesPlease
@@ -1076,6 +1076,7 @@ endif
 -include config.mak
 
 ifdef CHECK_HEADER_DEPENDENCIES
+COMPUTE_HEADER_DEPENDENCIES =
 USE_COMPUTED_HEADER_DEPENDENCIES =
 endif
 
@@ -1668,7 +1669,10 @@ git.o git.spec \
 
 TEST_OBJS := $(patsubst test-%$X,test-%.o,$(TEST_PROGRAMS))
 GIT_OBJS := $(LIB_OBJS) $(BUILTIN_OBJS) $(PROGRAM_OBJS) $(TEST_OBJS) \
-	git.o http.o http-walker.o remote-curl.o
+	git.o
+ifndef NO_CURL
+	GIT_OBJS += http.o http-walker.o remote-curl.o
+endif
 XDIFF_OBJS = xdiff/xdiffi.o xdiff/xprepare.o xdiff/xutils.o xdiff/xemit.o \
 	xdiff/xmerge.o xdiff/xpatience.o
 OBJECTS := $(GIT_OBJS) $(XDIFF_OBJS)
@@ -2008,12 +2012,13 @@ endif
 		ln -s "git$X" "$$execdir/$$p" 2>/dev/null || \
 		cp "$$execdir/git$X" "$$execdir/$$p" || exit; \
 	  done; } && \
-	{ for p in $(REMOTE_CURL_ALIASES); do \
+	{ test x"$(REMOTE_CURL_ALIASES)" = x || \
+		{ for p in $(REMOTE_CURL_ALIASES); do \
 		$(RM) "$$execdir/$$p" && \
 		ln "$$execdir/git-remote-http$X" "$$execdir/$$p" 2>/dev/null || \
 		ln -s "git-remote-http$X" "$$execdir/$$p" 2>/dev/null || \
 		cp "$$execdir/git-remote-http$X" "$$execdir/$$p" || exit; \
-	  done; } && \
+	  done; } ; } && \
 	./check_bindir "z$$bindir" "z$$execdir" "$$bindir/git-add$X"
 
 install-gitweb:
