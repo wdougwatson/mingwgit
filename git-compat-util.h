@@ -200,6 +200,7 @@ extern char *gitbasename(char *);
 #include "compat/bswap.h"
 
 /* General helper functions */
+extern void vreportf(const char *prefix, const char *err, va_list params);
 extern NORETURN void usage(const char *err);
 extern NORETURN void usagef(const char *err, ...) __attribute__((format (printf, 1, 2)));
 extern NORETURN void die(const char *err, ...) __attribute__((format (printf, 1, 2)));
@@ -224,7 +225,6 @@ static inline const char *skip_prefix(const char *str, const char *prefix)
 #define PROT_READ 1
 #define PROT_WRITE 2
 #define MAP_PRIVATE 1
-#define MAP_FAILED ((void*)-1)
 #endif
 
 #define mmap git_mmap
@@ -252,6 +252,10 @@ extern int git_munmap(void *start, size_t length);
 		: 32 * 1024 * 1024)
 
 #endif /* NO_MMAP */
+
+#ifndef MAP_FAILED
+#define MAP_FAILED ((void *)-1)
+#endif
 
 #ifdef NO_ST_BLOCKS_IN_STRUCT_STAT
 #define on_disk_bytes(st) ((st).st_size)

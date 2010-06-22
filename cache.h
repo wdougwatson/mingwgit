@@ -361,7 +361,7 @@ enum object_type {
 	OBJ_OFS_DELTA = 6,
 	OBJ_REF_DELTA = 7,
 	OBJ_ANY,
-	OBJ_MAX,
+	OBJ_MAX
 };
 
 static inline enum object_type object_type(unsigned int mode)
@@ -547,7 +547,6 @@ extern int core_compression_seen;
 extern size_t packed_git_window_size;
 extern size_t packed_git_limit;
 extern size_t delta_base_cache_limit;
-extern int auto_crlf;
 extern int read_replace_refs;
 extern int fsync_object_files;
 extern int core_preload_index;
@@ -556,10 +555,31 @@ extern int core_apply_sparse_checkout;
 enum safe_crlf {
 	SAFE_CRLF_FALSE = 0,
 	SAFE_CRLF_FAIL = 1,
-	SAFE_CRLF_WARN = 2,
+	SAFE_CRLF_WARN = 2
 };
 
 extern enum safe_crlf safe_crlf;
+
+enum auto_crlf {
+	AUTO_CRLF_FALSE = 0,
+	AUTO_CRLF_TRUE = 1,
+	AUTO_CRLF_INPUT = -1,
+};
+
+extern enum auto_crlf auto_crlf;
+
+enum eol {
+	EOL_UNSET,
+	EOL_CRLF,
+	EOL_LF,
+#ifdef NATIVE_CRLF
+	EOL_NATIVE = EOL_CRLF
+#else
+	EOL_NATIVE = EOL_LF
+#endif
+};
+
+extern enum eol eol;
 
 enum branch_track {
 	BRANCH_TRACK_UNSPECIFIED = -1,
@@ -567,21 +587,21 @@ enum branch_track {
 	BRANCH_TRACK_REMOTE,
 	BRANCH_TRACK_ALWAYS,
 	BRANCH_TRACK_EXPLICIT,
-	BRANCH_TRACK_OVERRIDE,
+	BRANCH_TRACK_OVERRIDE
 };
 
 enum rebase_setup_type {
 	AUTOREBASE_NEVER = 0,
 	AUTOREBASE_LOCAL,
 	AUTOREBASE_REMOTE,
-	AUTOREBASE_ALWAYS,
+	AUTOREBASE_ALWAYS
 };
 
 enum push_default_type {
 	PUSH_DEFAULT_NOTHING = 0,
 	PUSH_DEFAULT_MATCHING,
 	PUSH_DEFAULT_TRACKING,
-	PUSH_DEFAULT_CURRENT,
+	PUSH_DEFAULT_CURRENT
 };
 
 extern enum branch_track git_branch_track;
@@ -590,7 +610,7 @@ extern enum push_default_type push_default;
 
 enum object_creation_mode {
 	OBJECT_CREATION_USES_HARDLINKS = 0,
-	OBJECT_CREATION_USES_RENAMES = 1,
+	OBJECT_CREATION_USES_RENAMES = 1
 };
 
 extern enum object_creation_mode object_creation_mode;
@@ -670,7 +690,7 @@ enum sharedrepo {
 	OLD_PERM_GROUP      = 1,
 	OLD_PERM_EVERYBODY  = 2,
 	PERM_GROUP          = 0660,
-	PERM_EVERYBODY      = 0664,
+	PERM_EVERYBODY      = 0664
 };
 int git_config_perm(const char *var, const char *value);
 int set_shared_perm(const char *path, int mode);
@@ -882,7 +902,7 @@ struct ref {
 		REF_STATUS_REJECT_NODELETE,
 		REF_STATUS_UPTODATE,
 		REF_STATUS_REMOTE_REJECT,
-		REF_STATUS_EXPECTING_REPORT,
+		REF_STATUS_EXPECTING_REPORT
 	} status;
 	char *remote_status;
 	struct ref *peer_ref; /* when renaming */

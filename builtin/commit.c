@@ -48,6 +48,11 @@ static const char implicit_ident_advice[] =
 "\n"
 "    git commit --amend --author='Your Name <you@example.com>'\n";
 
+static const char empty_amend_advice[] =
+"You asked to amend the most recent commit, but doing so would make\n"
+"it empty. You can repeat your command with --allow-empty, or you can\n"
+"remove the commit entirely with \"git reset HEAD^\".\n";
+
 static unsigned char head_sha1[20];
 
 static char *use_message_buffer;
@@ -57,7 +62,7 @@ static struct lock_file false_lock; /* used only for partial commits */
 static enum {
 	COMMIT_AS_IS = 1,
 	COMMIT_NORMAL,
-	COMMIT_PARTIAL,
+	COMMIT_PARTIAL
 } commit_style;
 
 static const char *logfile, *force_author;
@@ -78,7 +83,7 @@ static char *untracked_files_arg, *force_date;
 static enum {
 	CLEANUP_SPACE,
 	CLEANUP_NONE,
-	CLEANUP_ALL,
+	CLEANUP_ALL
 } cleanup_mode;
 static char *cleanup_arg;
 
@@ -91,7 +96,7 @@ static int null_termination;
 static enum {
 	STATUS_FORMAT_LONG,
 	STATUS_FORMAT_SHORT,
-	STATUS_FORMAT_PORCELAIN,
+	STATUS_FORMAT_PORCELAIN
 } status_format = STATUS_FORMAT_LONG;
 static int status_show_branch;
 
@@ -708,6 +713,8 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 	if (!commitable && !in_merge && !allow_empty &&
 	    !(amend && is_a_merge(head_sha1))) {
 		run_status(stdout, index_file, prefix, 0, s);
+		if (amend)
+			fputs(empty_amend_advice, stderr);
 		return 0;
 	}
 
@@ -732,7 +739,8 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 
 	if (use_editor) {
 		char index[PATH_MAX];
-		const char *env[2] = { index, NULL };
+		const char *env[2] = { NULL };
+		env[0] =  index;
 		snprintf(index, sizeof(index), "GIT_INDEX_FILE=%s", index_file);
 		if (launch_editor(git_path(commit_editmsg), NULL, env)) {
 			fprintf(stderr,
@@ -1167,13 +1175,11 @@ static void print_summary(const char *prefix, const unsigned char *sha1)
 		initial_commit ? " (root-commit)" : "");
 
 	if (!log_tree_commit(&rev, commit)) {
-		struct pretty_print_context ctx = {0};
-		struct strbuf buf = STRBUF_INIT;
-		ctx.date_mode = DATE_NORMAL;
-		format_commit_message(commit, format.buf + 7, &buf, &ctx);
-		printf("%s\n", buf.buf);
-		strbuf_release(&buf);
+		rev.always_show_header = 1;
+		rev.use_terminator = 1;
+		log_tree_commit(&rev, commit);
 	}
+
 	strbuf_release(&format);
 }
 
@@ -1261,13 +1267,16 @@ int cmd_commit(int argc, const char **argv, const char *prefix)
 	}
 
 	/* Determine parents */
+	reflog_msg = getenv("GIT_REFLOG_ACTION");
 	if (initial_commit) {
-		reflog_msg = "commit (initial)";
+		if (!reflog_msg)
+			reflog_msg = "commit (initial)";
 	} else if (amend) {
 		struct commit_list *c;
 		struct commit *commit;
 
-		reflog_msg = "commit (amend)";
+		if (!reflog_msg)
+			reflog_msg = "commit (amend)";
 		commit = lookup_commit(head_sha1);
 		if (!commit || parse_commit(commit))
 			die("could not parse HEAD commit");
@@ -1278,7 +1287,8 @@ int cmd_commit(int argc, const char **argv, const char *prefix)
 		struct strbuf m = STRBUF_INIT;
 		FILE *fp;
 
-		reflog_msg = "commit (merge)";
+		if (!reflog_msg)
+			reflog_msg = "commit (merge)";
 		pptr = &commit_list_insert(lookup_commit(head_sha1), pptr)->next;
 		fp = fopen(git_path("MERGE_HEAD"), "r");
 		if (fp == NULL)
@@ -1301,7 +1311,8 @@ int cmd_commit(int argc, const char **argv, const char *prefix)
 		if (allow_fast_forward)
 			parents = reduce_heads(parents);
 	} else {
-		reflog_msg = "commit";
+		if (!reflog_msg)
+			reflog_msg = "commit";
 		pptr = &commit_list_insert(lookup_commit(head_sha1), pptr)->next;
 	}
 

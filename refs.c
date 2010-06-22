@@ -314,7 +314,11 @@ static int warn_if_dangling_symref(const char *refname, const unsigned char *sha
 
 void warn_dangling_symref(FILE *fp, const char *msg_fmt, const char *refname)
 {
-	struct warn_if_dangling_data data = { fp, refname, msg_fmt };
+	struct warn_if_dangling_data data;
+
+	data.fp = fp;
+	data.refname = refname;
+	data.msg_fmt = msg_fmt;
 	for_each_rawref(warn_if_dangling_symref, &data);
 }
 
@@ -1258,10 +1262,49 @@ static int copy_msg(char *buf, const char *msg)
 	return cp - buf;
 }
 
+int log_ref_setup(const char *ref_name, char *logfile, int bufsize)
+{
+	int logfd, oflags = O_APPEND | O_WRONLY;
+
+	git_snpath(logfile, bufsize, "logs/%s", ref_name);
+	if (log_all_ref_updates &&
+	    (!prefixcmp(ref_name, "refs/heads/") ||
+	     !prefixcmp(ref_name, "refs/remotes/") ||
+	     !prefixcmp(ref_name, "refs/notes/") ||
+	     !strcmp(ref_name, "HEAD"))) {
+		if (safe_create_leading_directories(logfile) < 0)
+			return error("unable to create directory for %s",
+				     logfile);
+		oflags |= O_CREAT;
+	}
+
+	logfd = open(logfile, oflags, 0666);
+	if (logfd < 0) {
+		if (!(oflags & O_CREAT) && errno == ENOENT)
+			return 0;
+
+		if ((oflags & O_CREAT) && errno == EISDIR) {
+			if (remove_empty_directories(logfile)) {
+				return error("There are still logs under '%s'",
+					     logfile);
+			}
+			logfd = open(logfile, oflags, 0666);
+		}
+
+		if (logfd < 0)
+			return error("Unable to append to %s: %s",
+				     logfile, strerror(errno));
+	}
+
+	adjust_shared_perm(logfile);
+	close(logfd);
+	return 0;
+}
+
 static int log_ref_write(const char *ref_name, const unsigned char *old_sha1,
 			 const unsigned char *new_sha1, const char *msg)
 {
-	int logfd, written, oflags = O_APPEND | O_WRONLY;
+	int logfd, result, written, oflags = O_APPEND | O_WRONLY;
 	unsigned maxlen, len;
 	int msglen;
 	char log_file[PATH_MAX];
@@ -1271,39 +1314,13 @@ static int log_ref_write(const char *ref_name, const unsigned char *old_sha1,
 	if (log_all_ref_updates < 0)
 		log_all_ref_updates = !is_bare_repository();
 
-	git_snpath(log_file, sizeof(log_file), "logs/%s", ref_name);
+	result = log_ref_setup(ref_name, log_file, sizeof(log_file));
+	if (result)
+		return result;
 
-	if (log_all_ref_updates &&
-	    (!prefixcmp(ref_name, "refs/heads/") ||
-	     !prefixcmp(ref_name, "refs/remotes/") ||
-	     !prefixcmp(ref_name, "refs/notes/") ||
-	     !strcmp(ref_name, "HEAD"))) {
-		if (safe_create_leading_directories(log_file) < 0)
-			return error("unable to create directory for %s",
-				     log_file);
-		oflags |= O_CREAT;
-	}
-
-	logfd = open(log_file, oflags, 0666);
-	if (logfd < 0) {
-		if (!(oflags & O_CREAT) && errno == ENOENT)
-			return 0;
-
-		if ((oflags & O_CREAT) && errno == EISDIR) {
-			if (remove_empty_directories(log_file)) {
-				return error("There are still logs under '%s'",
-					     log_file);
-			}
-			logfd = open(log_file, oflags, 0666);
-		}
-
-		if (logfd < 0)
-			return error("Unable to append to %s: %s",
-				     log_file, strerror(errno));
-	}
-
-	adjust_shared_perm(log_file);
-
+	logfd = open(log_file, oflags);
+	if (logfd < 0)
+		return 0;
 	msglen = msg ? strlen(msg) : 0;
 	committer = git_committer_info(0);
 	maxlen = strlen(committer) + msglen + 100;

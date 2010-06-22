@@ -43,7 +43,7 @@ test_expect_success \
      git branch -l d/e/f &&
 	 test -f .git/refs/heads/d/e/f &&
 	 test -f .git/logs/refs/heads/d/e/f &&
-	 diff expect .git/logs/refs/heads/d/e/f'
+	 test_cmp expect .git/logs/refs/heads/d/e/f'
 
 test_expect_success \
     'git branch -d d/e/f should delete a branch and a log' \
@@ -222,7 +222,31 @@ test_expect_success \
      git checkout -b g/h/i -l master &&
 	 test -f .git/refs/heads/g/h/i &&
 	 test -f .git/logs/refs/heads/g/h/i &&
-	 diff expect .git/logs/refs/heads/g/h/i'
+	 test_cmp expect .git/logs/refs/heads/g/h/i'
+
+test_expect_success 'checkout -b makes reflog by default' '
+	git checkout master &&
+	git config --unset core.logAllRefUpdates &&
+	git checkout -b alpha &&
+	test -f .git/logs/refs/heads/alpha &&
+	PAGER= git reflog show alpha
+'
+
+test_expect_success 'checkout -b does not make reflog when core.logAllRefUpdates = false' '
+	git checkout master &&
+	git config core.logAllRefUpdates false &&
+	git checkout -b beta &&
+	! test -f .git/logs/refs/heads/beta &&
+	test_must_fail PAGER= git reflog show beta
+'
+
+test_expect_success 'checkout -b with -l makes reflog when core.logAllRefUpdates = false' '
+	git checkout master &&
+	git checkout -lb gamma &&
+	git config --unset core.logAllRefUpdates &&
+	test -f .git/logs/refs/heads/gamma &&
+	PAGER= git reflog show gamma
+'
 
 test_expect_success 'avoid ambiguous track' '
 	git config branch.autosetupmerge true &&
