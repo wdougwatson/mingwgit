@@ -1253,6 +1253,8 @@ static int handle_revision_opt(struct rev_info *revs, int argc, const char **arg
 		revs->boundary = 1;
 	} else if (!strcmp(arg, "--left-right")) {
 		revs->left_right = 1;
+	} else if (!strcmp(arg, "--count")) {
+		revs->count = 1;
 	} else if (!strcmp(arg, "--cherry-pick")) {
 		revs->cherry_pick = 1;
 		revs->limited = 1;
@@ -1312,8 +1314,8 @@ static int handle_revision_opt(struct rev_info *revs, int argc, const char **arg
 		else
 			strbuf_addstr(&buf, "refs/notes/");
 		strbuf_addstr(&buf, arg+13);
-		string_list_append(strbuf_detach(&buf, NULL),
-				   revs->notes_opt.extra_notes_refs);
+		string_list_append(revs->notes_opt.extra_notes_refs,
+				   strbuf_detach(&buf, NULL));
 	} else if (!strcmp(arg, "--no-notes")) {
 		revs->show_notes = 0;
 		revs->show_notes_given = 1;

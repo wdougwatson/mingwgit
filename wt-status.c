@@ -10,6 +10,7 @@
 #include "run-command.h"
 #include "remote.h"
 #include "refs.h"
+#include "submodule.h"
 
 static char default_wt_status_colors[][COLOR_MAXLEN] = {
 	GIT_COLOR_NORMAL, /* WT_STATUS_HEADER */
@@ -235,7 +236,7 @@ static void wt_status_collect_changed_cb(struct diff_queue_struct *q,
 		struct wt_status_change_data *d;
 
 		p = q->queue[i];
-		it = string_list_insert(p->one->path, &s->change);
+		it = string_list_insert(&s->change, p->one->path);
 		d = it->util;
 		if (!d) {
 			d = xcalloc(1, sizeof(*d));
@@ -282,7 +283,7 @@ static void wt_status_collect_updated_cb(struct diff_queue_struct *q,
 		struct wt_status_change_data *d;
 
 		p = q->queue[i];
-		it = string_list_insert(p->two->path, &s->change);
+		it = string_list_insert(&s->change, p->two->path);
 		d = it->util;
 		if (!d) {
 			d = xcalloc(1, sizeof(*d));
@@ -312,6 +313,8 @@ static void wt_status_collect_changes_worktree(struct wt_status *s)
 	DIFF_OPT_SET(&rev.diffopt, DIRTY_SUBMODULES);
 	if (!s->show_untracked_files)
 		DIFF_OPT_SET(&rev.diffopt, IGNORE_UNTRACKED_IN_SUBMODULES);
+	if (s->ignore_submodule_arg)
+		handle_ignore_submodules_arg(&rev.diffopt, s->ignore_submodule_arg);
 	rev.diffopt.format_callback = wt_status_collect_changed_cb;
 	rev.diffopt.format_callback_data = s;
 	rev.prune_data = s->pathspec;
@@ -327,6 +330,9 @@ static void wt_status_collect_changes_index(struct wt_status *s)
 	memset(&opt, 0, sizeof(opt));
 	opt.def = s->is_initial ? EMPTY_TREE_SHA1_HEX : s->reference;
 	setup_revisions(0, NULL, &rev, &opt);
+
+	if (s->ignore_submodule_arg)
+		handle_ignore_submodules_arg(&rev.diffopt, s->ignore_submodule_arg);
 
 	rev.diffopt.output_format |= DIFF_FORMAT_CALLBACK;
 	rev.diffopt.format_callback = wt_status_collect_updated_cb;
@@ -349,7 +355,7 @@ static void wt_status_collect_changes_initial(struct wt_status *s)
 
 		if (!ce_path_match(ce, s->pathspec))
 			continue;
-		it = string_list_insert(ce->name, &s->change);
+		it = string_list_insert(&s->change, ce->name);
 		d = it->util;
 		if (!d) {
 			d = xcalloc(1, sizeof(*d));
@@ -384,7 +390,7 @@ static void wt_status_collect_untracked(struct wt_status *s)
 			continue;
 		if (!match_pathspec(s->pathspec, ent->name, ent->len, 0, NULL))
 			continue;
-		string_list_insert(ent->name, &s->untracked);
+		string_list_insert(&s->untracked, ent->name);
 		free(ent);
 	}
 
@@ -398,7 +404,7 @@ static void wt_status_collect_untracked(struct wt_status *s)
 				continue;
 			if (!match_pathspec(s->pathspec, ent->name, ent->len, 0, NULL))
 				continue;
-			string_list_insert(ent->name, &s->ignored);
+			string_list_insert(&s->ignored, ent->name);
 			free(ent);
 		}
 	}
@@ -646,7 +652,9 @@ void wt_status_print(struct wt_status *s)
 	wt_status_print_updated(s);
 	wt_status_print_unmerged(s);
 	wt_status_print_changed(s);
-	if (s->submodule_summary) {
+	if (s->submodule_summary &&
+	    (!s->ignore_submodule_arg ||
+	     strcmp(s->ignore_submodule_arg, "all"))) {
 		wt_status_print_submodule_summary(s, 0);  /* staged */
 		wt_status_print_submodule_summary(s, 1);  /* unstaged */
 	}
