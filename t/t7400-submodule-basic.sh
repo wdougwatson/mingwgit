@@ -42,7 +42,8 @@ test_expect_success 'setup - hide init subdirectory' '
 '
 
 test_expect_success 'setup - repository to add submodules to' '
-	git init addtest
+	git init addtest &&
+	git init addtest-ignore
 '
 
 # The 'submodule add' tests need some repository to add as a submodule.
@@ -83,6 +84,30 @@ test_expect_success 'submodule add' '
 	test_cmp expect heads &&
 	test_cmp expect head &&
 	test_cmp empty untracked
+'
+
+test_expect_success 'submodule add to .gitignored path fails' '
+	(
+		cd addtest-ignore &&
+		cat <<-\EOF >expect &&
+		The following path is ignored by one of your .gitignore files:
+		submod
+		Use -f if you really want to add it.
+		EOF
+		# Does not use test_commit due to the ignore
+		echo "*" > .gitignore &&
+		git add --force .gitignore &&
+		git commit -m"Ignore everything" &&
+		! git submodule add "$submodurl" submod >actual 2>&1 &&
+		test_cmp expect actual
+	)
+'
+
+test_expect_success 'submodule add to .gitignored path with --force' '
+	(
+		cd addtest-ignore &&
+		git submodule add --force "$submodurl" submod
+	)
 '
 
 test_expect_success 'submodule add --branch' '
