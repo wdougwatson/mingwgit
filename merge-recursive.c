@@ -136,16 +136,10 @@ static void output_commit_title(struct merge_options *o, struct commit *commit)
 		if (parse_commit(commit) != 0)
 			printf("(bad commit)\n");
 		else {
-			const char *s;
-			int len;
-			for (s = commit->buffer; *s; s++)
-				if (*s == '\n' && s[1] == '\n') {
-					s += 2;
-					break;
-				}
-			for (len = 0; s[len] && '\n' != s[len]; len++)
-				; /* do nothing */
-			printf("%.*s\n", len, s);
+			const char *title;
+			int len = find_commit_subject(commit->buffer, &title);
+			if (len)
+				printf("%.*s\n", len, title);
 		}
 	}
 }
@@ -806,7 +800,8 @@ static int process_renames(struct merge_options *o,
 			   struct string_list *b_renames)
 {
 	int clean_merge = 1, i, j;
-	struct string_list a_by_dst = {NULL, 0, 0, 0}, b_by_dst = {NULL, 0, 0, 0};
+	struct string_list a_by_dst = STRING_LIST_INIT_NODUP;
+	struct string_list b_by_dst = STRING_LIST_INIT_NODUP;
 	const struct rename *sre;
 
 	for (i = 0; i < a_renames->nr; i++) {

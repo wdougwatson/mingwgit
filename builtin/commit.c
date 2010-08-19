@@ -25,6 +25,7 @@
 #include "rerere.h"
 #include "unpack-trees.h"
 #include "quote.h"
+#include "submodule.h"
 
 static const char * const builtin_commit_usage[] = {
 	"git commit [options] [--] <filepattern>...",
@@ -1073,6 +1074,7 @@ int cmd_status(int argc, const char **argv, const char *prefix)
 		status_format = STATUS_FORMAT_PORCELAIN;
 
 	wt_status_prepare(&s);
+	gitmodules_config();
 	git_config(git_status_config, &s);
 	in_merge = file_exists(git_path("MERGE_HEAD"));
 	argc = parse_options(argc, argv, prefix,
@@ -1163,7 +1165,6 @@ static void print_summary(const char *prefix, const unsigned char *sha1)
 	init_revisions(&rev, prefix);
 	setup_revisions(0, NULL, &rev, NULL);
 
-	rev.abbrev = 0;
 	rev.diff = 1;
 	rev.diffopt.output_format =
 		DIFF_FORMAT_SHORTSTAT | DIFF_FORMAT_SUMMARY;
