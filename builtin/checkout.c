@@ -376,7 +376,7 @@ static int merge_working_tree(struct checkout_opts *opts,
 		topts.src_index = &the_index;
 		topts.dst_index = &the_index;
 
-		topts.msgs.not_uptodate_file = "You have local changes to '%s'; cannot switch branches.";
+		set_porcelain_error_msgs(topts.msgs, "checkout");
 
 		refresh_cache(REFRESH_QUIET);
 
@@ -395,6 +395,7 @@ static int merge_working_tree(struct checkout_opts *opts,
 		topts.dir = xcalloc(1, sizeof(*topts.dir));
 		topts.dir->flags |= DIR_SHOW_IGNORED;
 		topts.dir->exclude_per_dir = ".gitignore";
+		topts.show_all_errors = 1;
 		tree = parse_tree_indirect(old->commit ?
 					   old->commit->object.sha1 :
 					   (unsigned char *)EMPTY_TREE_SHA1_BIN);
@@ -533,9 +534,12 @@ static void update_refs_for_switch(struct checkout_opts *opts,
 			if (old->path && !strcmp(new->path, old->path))
 				fprintf(stderr, "Already on '%s'\n",
 					new->name);
-			else
+			else if (opts->new_branch)
 				fprintf(stderr, "Switched to%s branch '%s'\n",
 					opts->branch_exists ? " and reset" : " a new",
+					new->name);
+			else
+				fprintf(stderr, "Switched to branch '%s'\n",
 					new->name);
 		}
 		if (old->path && old->name) {

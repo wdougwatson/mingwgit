@@ -179,8 +179,7 @@ struct cache_entry {
 #define CE_UNHASHED  (0x200000)
 #define CE_CONFLICTED (0x800000)
 
-/* Only remove in work directory, not index */
-#define CE_WT_REMOVE (0x400000)
+#define CE_WT_REMOVE (0x400000) /* remove in work directory */
 
 #define CE_UNPACKED  (0x1000000)
 
@@ -641,6 +640,9 @@ extern char *git_pathdup(const char *fmt, ...)
 /* Return a statically allocated filename matching the sha1 signature */
 extern char *mkpath(const char *fmt, ...) __attribute__((format (printf, 1, 2)));
 extern char *git_path(const char *fmt, ...) __attribute__((format (printf, 1, 2)));
+extern char *git_path_submodule(const char *path, const char *fmt, ...)
+	__attribute__((format (printf, 2, 3)));
+
 extern char *sha1_file_name(const unsigned char *sha1);
 extern char *sha1_pack_name(const unsigned char *sha1);
 extern char *sha1_pack_index_name(const unsigned char *sha1);
@@ -1097,6 +1099,8 @@ void overlay_tree_on_cache(const char *tree_name, const char *prefix);
 
 char *alias_lookup(const char *alias);
 int split_cmdline(char *cmdline, const char ***argv);
+/* Takes a negative value returned by split_cmdline */
+const char *split_cmdline_strerror(int cmdline_errno);
 
 /* builtin/merge.c */
 int checkout_fast_forward(const unsigned char *from, const unsigned char *to);

@@ -486,7 +486,8 @@ static int git_merge_config(const char *k, const char *v, void *cb)
 		buf = xstrdup(v);
 		argc = split_cmdline(buf, &argv);
 		if (argc < 0)
-			die("Bad branch.%s.mergeoptions string", branch);
+			die("Bad branch.%s.mergeoptions string: %s", branch,
+			    split_cmdline_strerror(argc));
 		argv = xrealloc(argv, sizeof(*argv) * (argc + 2));
 		memmove(argv + 1, argv, sizeof(*argv) * (argc + 1));
 		argc++;
@@ -704,7 +705,8 @@ int checkout_fast_forward(const unsigned char *head, const unsigned char *remote
 	opts.verbose_update = 1;
 	opts.merge = 1;
 	opts.fn = twoway_merge;
-	opts.msgs = get_porcelain_error_msgs();
+	opts.show_all_errors = 1;
+	set_porcelain_error_msgs(opts.msgs, "merge");
 
 	trees[nr_trees] = parse_tree_indirect(head);
 	if (!trees[nr_trees++])
