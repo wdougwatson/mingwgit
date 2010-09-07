@@ -111,11 +111,12 @@ VERBOSE=
 OK_TO_SKIP_PRE_REBASE=
 REBASE_ROOT=
 AUTOSQUASH=
+test "$(git config --bool rebase.autosquash)" = "true" && AUTOSQUASH=t
 NEVER_FF=
 
-GIT_CHERRY_PICK_HELP="  After resolving the conflicts,
-mark the corrected paths with 'git add <paths>', and
-run 'git rebase --continue'"
+GIT_CHERRY_PICK_HELP="\
+hint: after resolving the conflicts, mark the corrected paths
+hint: with 'git add <paths>' and run 'git rebase --continue'"
 export GIT_CHERRY_PICK_HELP
 
 warn () {
@@ -830,6 +831,9 @@ first and then run 'git rebase --continue' again."
 		;;
 	--autosquash)
 		AUTOSQUASH=t
+		;;
+	--no-autosquash)
+		AUTOSQUASH=
 		;;
 	--onto)
 		shift

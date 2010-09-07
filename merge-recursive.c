@@ -180,7 +180,7 @@ static int git_merge_trees(int index_only,
 	opts.fn = threeway_merge;
 	opts.src_index = &the_index;
 	opts.dst_index = &the_index;
-	set_porcelain_error_msgs(opts.msgs, "merge");
+	setup_unpack_trees_porcelain(&opts, "merge");
 
 	init_tree_desc_from_tree(t+0, common);
 	init_tree_desc_from_tree(t+1, head);
@@ -644,7 +644,9 @@ static int merge_3way(struct merge_options *o,
 
 	merge_status = ll_merge(result_buf, a->path, &orig, base_name,
 				&src1, name1, &src2, name2,
-				(!!o->call_depth) | (favor << 1));
+				((o->call_depth ? LL_OPT_VIRTUAL_ANCESTOR : 0) |
+				 (o->renormalize ? LL_OPT_RENORMALIZE : 0) |
+				 create_ll_flag(favor)));
 
 	free(name1);
 	free(name2);
@@ -1017,14 +1019,22 @@ static int process_renames(struct merge_options *o,
 
 				if (mfi.clean &&
 				    sha_eq(mfi.sha, ren1->pair->two->sha1) &&
-				    mfi.mode == ren1->pair->two->mode)
+				    mfi.mode == ren1->pair->two->mode) {
 					/*
-					 * This messaged is part of
+					 * This message is part of
 					 * t6022 test. If you change
 					 * it update the test too.
 					 */
 					output(o, 3, "Skipped %s (merged same as existing)", ren1_dst);
-				else {
+
+					/* There may be higher stage entries left
+					 * in the index (e.g. due to a D/F
+					 * conflict) that need to be resolved.
+					 */
+					if (!ren1->dst_entry->stages[2].mode !=
+					    !ren1->dst_entry->stages[3].mode)
+						ren1->dst_entry->processed = 0;
+				} else {
 					if (mfi.merge || !mfi.clean)
 						output(o, 1, "Renaming %s => %s", ren1_src, ren1_dst);
 					if (mfi.merge)
@@ -1054,6 +1064,53 @@ static unsigned char *stage_sha(const unsigned char *sha, unsigned mode)
 	return (is_null_sha1(sha) || mode == 0) ? NULL: (unsigned char *)sha;
 }
 
+static int read_sha1_strbuf(const unsigned char *sha1, struct strbuf *dst)
+{
+	void *buf;
+	enum object_type type;
+	unsigned long size;
+	buf = read_sha1_file(sha1, &type, &size);
+	if (!buf)
+		return error("cannot read object %s", sha1_to_hex(sha1));
+	if (type != OBJ_BLOB) {
+		free(buf);
+		return error("object %s is not a blob", sha1_to_hex(sha1));
+	}
+	strbuf_attach(dst, buf, size, size + 1);
+	return 0;
+}
+
+static int blob_unchanged(const unsigned char *o_sha,
+			  const unsigned char *a_sha,
+			  int renormalize, const char *path)
+{
+	struct strbuf o = STRBUF_INIT;
+	struct strbuf a = STRBUF_INIT;
+	int ret = 0; /* assume changed for safety */
+
+	if (sha_eq(o_sha, a_sha))
+		return 1;
+	if (!renormalize)
+		return 0;
+
+	assert(o_sha && a_sha);
+	if (read_sha1_strbuf(o_sha, &o) || read_sha1_strbuf(a_sha, &a))
+		goto error_return;
+	/*
+	 * Note: binary | is used so that both renormalizations are
+	 * performed.  Comparison can be skipped if both files are
+	 * unchanged since their sha1s have already been compared.
+	 */
+	if (renormalize_buffer(path, o.buf, o.len, &o) |
+	    renormalize_buffer(path, a.buf, o.len, &a))
+		ret = (o.len == a.len && !memcmp(o.buf, a.buf, o.len));
+
+error_return:
+	strbuf_release(&o);
+	strbuf_release(&a);
+	return ret;
+}
+
 /* Per entry merge function */
 static int process_entry(struct merge_options *o,
 			 const char *path, struct stage_data *entry)
@@ -1063,6 +1120,7 @@ static int process_entry(struct merge_options *o,
 	print_index_entry("\tpath: ", entry);
 	*/
 	int clean_merge = 1;
+	int normalize = o->renormalize;
 	unsigned o_mode = entry->stages[1].mode;
 	unsigned a_mode = entry->stages[2].mode;
 	unsigned b_mode = entry->stages[3].mode;
@@ -1070,11 +1128,12 @@ static int process_entry(struct merge_options *o,
 	unsigned char *a_sha = stage_sha(entry->stages[2].sha, a_mode);
 	unsigned char *b_sha = stage_sha(entry->stages[3].sha, b_mode);
 
+	entry->processed = 1;
 	if (o_sha && (!a_sha || !b_sha)) {
 		/* Case A: Deleted in one */
 		if ((!a_sha && !b_sha) ||
-		    (sha_eq(a_sha, o_sha) && !b_sha) ||
-		    (!a_sha && sha_eq(b_sha, o_sha))) {
+		    (!b_sha && blob_unchanged(o_sha, a_sha, normalize, path)) ||
+		    (!a_sha && blob_unchanged(o_sha, b_sha, normalize, path))) {
 			/* Deleted in both or deleted in one and
 			 * unchanged in the other */
 			if (a_sha)
@@ -1102,33 +1161,28 @@ static int process_entry(struct merge_options *o,
 	} else if ((!o_sha && a_sha && !b_sha) ||
 		   (!o_sha && !a_sha && b_sha)) {
 		/* Case B: Added in one. */
-		const char *add_branch;
-		const char *other_branch;
 		unsigned mode;
 		const unsigned char *sha;
-		const char *conf;
 
 		if (a_sha) {
-			add_branch = o->branch1;
-			other_branch = o->branch2;
 			mode = a_mode;
 			sha = a_sha;
-			conf = "file/directory";
 		} else {
-			add_branch = o->branch2;
-			other_branch = o->branch1;
 			mode = b_mode;
 			sha = b_sha;
-			conf = "directory/file";
 		}
 		if (string_list_has_string(&o->current_directory_set, path)) {
-			const char *new_path = unique_path(o, path, add_branch);
-			clean_merge = 0;
-			output(o, 1, "CONFLICT (%s): There is a directory with name %s in %s. "
-			       "Adding %s as %s",
-			       conf, path, other_branch, path, new_path);
-			remove_file(o, 0, path, 0);
-			update_file(o, 0, sha, mode, new_path);
+			/* Handle D->F conflicts after all subfiles */
+			entry->processed = 0;
+			/* But get any file out of the way now, so conflicted
+			 * entries below the directory of the same name can
+			 * be put in the working directory.
+			 */
+			if (a_sha)
+				output(o, 2, "Removing %s", path);
+			/* do not touch working file if it did not exist */
+			remove_file(o, 0, path, !a_sha);
+			return 1; /* Assume clean till processed */
 		} else {
 			output(o, 2, "Adding %s", path);
 			update_file(o, 1, sha, mode, path);
@@ -1176,48 +1230,62 @@ static int process_entry(struct merge_options *o,
 	return clean_merge;
 }
 
-void set_porcelain_error_msgs(const char **msgs, const char *cmd)
+/*
+ * Per entry merge function for D/F conflicts, to be called only after
+ * all files below dir have been processed.  We do this because in the
+ * cases we can cleanly resolve D/F conflicts, process_entry() can clean
+ * out all the files below the directory for us.
+ */
+static int process_df_entry(struct merge_options *o,
+			 const char *path, struct stage_data *entry)
 {
-	const char *msg;
-	char *tmp;
-	const char *cmd2 = strcmp(cmd, "checkout") ? cmd : "switch branches";
-	if (advice_commit_before_merge)
-		msg = "Your local changes to the following files would be overwritten by %s:\n%%s"
-			"Please, commit your changes or stash them before you can %s.";
-	else
-		msg = "Your local changes to the following files would be overwritten by %s:\n%%s";
-	tmp = xmalloc(strlen(msg) + strlen(cmd) + strlen(cmd2) - 2);
-	sprintf(tmp, msg, cmd, cmd2);
-	msgs[ERROR_WOULD_OVERWRITE] = tmp;
-	msgs[ERROR_NOT_UPTODATE_FILE] = tmp;
+	int clean_merge = 1;
+	unsigned o_mode = entry->stages[1].mode;
+	unsigned a_mode = entry->stages[2].mode;
+	unsigned b_mode = entry->stages[3].mode;
+	unsigned char *o_sha = stage_sha(entry->stages[1].sha, o_mode);
+	unsigned char *a_sha = stage_sha(entry->stages[2].sha, a_mode);
+	unsigned char *b_sha = stage_sha(entry->stages[3].sha, b_mode);
+	const char *add_branch;
+	const char *other_branch;
+	unsigned mode;
+	const unsigned char *sha;
+	const char *conf;
+	struct stat st;
 
-	msgs[ERROR_NOT_UPTODATE_DIR] =
-		"Updating the following directories would lose untracked files in it:\n%s";
+	/* We currently only handle D->F cases */
+	assert((!o_sha && a_sha && !b_sha) ||
+	       (!o_sha && !a_sha && b_sha));
 
-	if (advice_commit_before_merge)
-		msg = "The following untracked working tree files would be %s by %s:\n%%s"
-			"Please move or remove them before you can %s.";
-	else
-		msg = "The following untracked working tree files would be %s by %s:\n%%s";
-	tmp = xmalloc(strlen(msg) + strlen(cmd) + strlen("removed") + strlen(cmd2) - 4);
-	sprintf(tmp, msg, "removed", cmd, cmd2);
-	msgs[ERROR_WOULD_LOSE_UNTRACKED_REMOVED] = tmp;
-	tmp = xmalloc(strlen(msg) + strlen(cmd) + strlen("overwritten") + strlen(cmd2) - 4);
-	sprintf(tmp, msg, "overwritten", cmd, cmd2);
-	msgs[ERROR_WOULD_LOSE_UNTRACKED_OVERWRITTEN] = tmp;
+	entry->processed = 1;
 
-	/*
-	 * Special case: ERROR_BIND_OVERLAP refers to a pair of paths, we
-	 * cannot easily display it as a list.
-	 */
-	msgs[ERROR_BIND_OVERLAP] = "Entry '%s' overlaps with '%s'.  Cannot bind.";
+	if (a_sha) {
+		add_branch = o->branch1;
+		other_branch = o->branch2;
+		mode = a_mode;
+		sha = a_sha;
+		conf = "file/directory";
+	} else {
+		add_branch = o->branch2;
+		other_branch = o->branch1;
+		mode = b_mode;
+		sha = b_sha;
+		conf = "directory/file";
+	}
+	if (lstat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
+		const char *new_path = unique_path(o, path, add_branch);
+		clean_merge = 0;
+		output(o, 1, "CONFLICT (%s): There is a directory with name %s in %s. "
+		       "Adding %s as %s",
+		       conf, path, other_branch, path, new_path);
+		remove_file(o, 0, path, 0);
+		update_file(o, 0, sha, mode, new_path);
+	} else {
+		output(o, 2, "Adding %s", path);
+		update_file(o, 1, sha, mode, path);
+	}
 
-	msgs[ERROR_SPARSE_NOT_UPTODATE_FILE] =
-		"Cannot update sparse checkout: the following entries are not up-to-date:\n%s";
-	msgs[ERROR_WOULD_LOSE_ORPHANED_OVERWRITTEN] =
-		"The following Working tree files would be overwritten by sparse checkout update:\n%s";
-	msgs[ERROR_WOULD_LOSE_ORPHANED_REMOVED] =
-		"The following Working tree files would be removed by sparse checkout update:\n%s";
+	return clean_merge;
 }
 
 int merge_trees(struct merge_options *o,
@@ -1267,6 +1335,13 @@ int merge_trees(struct merge_options *o,
 			struct stage_data *e = entries->items[i].util;
 			if (!e->processed
 				&& !process_entry(o, path, e))
+				clean = 0;
+		}
+		for (i = 0; i < entries->nr; i++) {
+			const char *path = entries->items[i].string;
+			struct stage_data *e = entries->items[i].util;
+			if (!e->processed
+				&& !process_df_entry(o, path, e))
 				clean = 0;
 		}
 
@@ -1456,6 +1531,7 @@ void init_merge_options(struct merge_options *o)
 	o->buffer_output = 1;
 	o->diff_rename_limit = -1;
 	o->merge_rename_limit = -1;
+	o->renormalize = 0;
 	git_config(merge_recursive_config, o);
 	if (getenv("GIT_MERGE_VERBOSITY"))
 		o->verbosity =

@@ -797,7 +797,7 @@ test_expect_success 'commit --dry-run submodule summary (--amend)' '
 	test_cmp expect output
 '
 
-test_expect_success POSIXPERM 'status succeeds in a read-only repository' '
+test_expect_success POSIXPERM,SANITY 'status succeeds in a read-only repository' '
 	(
 		chmod a-w .git &&
 		# make dir1/tracked stat-dirty
@@ -812,7 +812,7 @@ test_expect_success POSIXPERM 'status succeeds in a read-only repository' '
 	(exit $status)
 '
 
-(cd sm && echo > bar && git add bar && git commit -q -m 'Add bar' && cd .. && git add sm)
+(cd sm && echo > bar && git add bar && git commit -q -m 'Add bar') && git add sm
 new_head=$(cd sm && git rev-parse --short=7 --verify HEAD)
 touch .gitmodules
 

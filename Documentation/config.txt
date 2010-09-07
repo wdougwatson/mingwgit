@@ -829,7 +829,8 @@ diff.renames::
 diff.ignoreSubmodules::
 	Sets the default value of --ignore-submodules. Note that this
 	affects only 'git diff' Porcelain, and not lower level 'diff'
-	commands such as 'git diff-files'.
+	commands such as 'git diff-files'. 'git checkout' also honors
+	this setting when reporting uncommitted changes.
 
 diff.suppressBlankEmpty::
 	A boolean to inhibit the standard behavior of printing a space
@@ -1305,10 +1306,11 @@ interactive.singlekey::
 	ignored if portable keystroke input is not available.
 
 log.date::
-	Set default date-time mode for the log command. Setting log.date
-	value is similar to using 'git log'\'s --date option. The value is one of the
-	following alternatives: {relative,local,default,iso,rfc,short}.
-	See linkgit:git-log[1].
+	Set the default date-time mode for the 'log' command.
+	Setting a value for log.date is similar to using 'git log''s
+	`\--date` option.  Possible values are `relative`, `local`,
+	`default`, `iso`, `rfc`, and `short`; see linkgit:git-log[1]
+	for details.
 
 log.decorate::
 	Print out the ref names of any commits that are shown by the log
@@ -1549,6 +1551,9 @@ rebase.stat::
 	Whether to show a diffstat of what changed upstream since the last
 	rebase. False by default.
 
+rebase.autosquash::
+	If set to true enable '--autosquash' option by default.
+
 receive.autogc::
 	By default, git-receive-pack will run "git-gc --auto" after
 	receiving data from git-push and updating refs.  You can stop
@@ -1643,7 +1648,9 @@ remote.<name>.tagopt::
 	Setting this value to \--no-tags disables automatic tag following when
 	fetching from remote <name>. Setting it to \--tags will fetch every
 	tag from remote <name>, even if they are not reachable from remote
-	branch heads.
+	branch heads. Passing these flags directly to linkgit:git-fetch[1] can
+	override this setting. See options \--tags and \--no-tags of
+	linkgit:git-fetch[1].
 
 remote.<name>.vcs::
 	Setting this to a value <vcs> will cause git to interact with

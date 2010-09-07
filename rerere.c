@@ -319,6 +319,10 @@ static int handle_cache(const char *path, unsigned char *sha1, const char *outpu
 		if (!mmfile[i].ptr && !mmfile[i].size)
 			mmfile[i].ptr = xstrdup("");
 	}
+	/*
+	 * NEEDSWORK: handle conflicts from merges with
+	 * merge.renormalize set, too
+	 */
 	ll_merge(&result, path, &mmfile[0], NULL,
 		 &mmfile[1], "ours",
 		 &mmfile[2], "theirs", 0);
@@ -378,7 +382,13 @@ static int merge(const char *name, const char *path)
 	}
 	ret = ll_merge(&result, path, &base, NULL, &cur, "", &other, "", 0);
 	if (!ret) {
-		FILE *f = fopen(path, "w");
+		FILE *f;
+
+		if (utime(rerere_path(name, "postimage"), NULL) < 0)
+			warning("failed utime() on %s: %s",
+					rerere_path(name, "postimage"),
+					strerror(errno));
+		f = fopen(path, "w");
 		if (!f)
 			return error("Could not open %s: %s", path,
 				     strerror(errno));

@@ -18,6 +18,7 @@
 #include "xdiff-interface.h"
 #include "ll-merge.h"
 #include "resolve-undo.h"
+#include "submodule.h"
 
 static const char * const checkout_usage[] = {
 	"git checkout [options] <branch>",
@@ -40,6 +41,7 @@ struct checkout_opts {
 	const char *new_orphan_branch;
 	int new_branch_log;
 	enum branch_track track;
+	struct diff_options diff_options;
 };
 
 static int post_checkout_hook(struct commit *old, struct commit *new,
@@ -154,6 +156,10 @@ static int checkout_merged(int pos, struct checkout *state)
 	read_mmblob(&ours, active_cache[pos+1]->sha1);
 	read_mmblob(&theirs, active_cache[pos+2]->sha1);
 
+	/*
+	 * NEEDSWORK: re-create conflicts from merges with
+	 * merge.renormalize set, too
+	 */
 	status = ll_merge(&result_buf, path, &ancestor, "base",
 			  &ours, "ours", &theirs, "theirs", 0);
 	free(ancestor.ptr);
@@ -278,11 +284,12 @@ static int checkout_paths(struct tree *source_tree, const char **pathspec,
 	return errs;
 }
 
-static void show_local_changes(struct object *head)
+static void show_local_changes(struct object *head, struct diff_options *opts)
 {
 	struct rev_info rev;
 	/* I think we want full paths, even if we're in a subdirectory. */
 	init_revisions(&rev, NULL);
+	rev.diffopt.flags = opts->flags;
 	rev.diffopt.output_format |= DIFF_FORMAT_NAME_STATUS;
 	if (diff_setup_done(&rev.diffopt) < 0)
 		die("diff_setup_done failed");
@@ -376,7 +383,7 @@ static int merge_working_tree(struct checkout_opts *opts,
 		topts.src_index = &the_index;
 		topts.dst_index = &the_index;
 
-		set_porcelain_error_msgs(topts.msgs, "checkout");
+		setup_unpack_trees_porcelain(&topts, "checkout");
 
 		refresh_cache(REFRESH_QUIET);
 
@@ -395,7 +402,6 @@ static int merge_working_tree(struct checkout_opts *opts,
 		topts.dir = xcalloc(1, sizeof(*topts.dir));
 		topts.dir->flags |= DIR_SHOW_IGNORED;
 		topts.dir->exclude_per_dir = ".gitignore";
-		topts.show_all_errors = 1;
 		tree = parse_tree_indirect(old->commit ?
 					   old->commit->object.sha1 :
 					   (unsigned char *)EMPTY_TREE_SHA1_BIN);
@@ -437,6 +443,13 @@ static int merge_working_tree(struct checkout_opts *opts,
 			 */
 
 			add_files_to_cache(NULL, NULL, 0);
+			/*
+			 * NEEDSWORK: carrying over local changes
+			 * when branches have different end-of-line
+			 * normalization (or clean+smudge rules) is
+			 * a pain; plumb in an option to set
+			 * o.renormalize?
+			 */
 			init_merge_options(&o);
 			o.verbosity = 0;
 			work = write_tree_from_memory(&o);
@@ -460,7 +473,7 @@ static int merge_working_tree(struct checkout_opts *opts,
 		die("unable to write new index file");
 
 	if (!opts->force && !opts->quiet)
-		show_local_changes(&new->commit->object);
+		show_local_changes(&new->commit->object, &opts->diff_options);
 
 	return 0;
 }
@@ -608,7 +621,16 @@ static int switch_branches(struct checkout_opts *opts, struct branch_info *new)
 
 static int git_checkout_config(const char *var, const char *value, void *cb)
 {
-	return git_xmerge_config(var, value, cb);
+	if (!strcmp(var, "diff.ignoresubmodules")) {
+		struct checkout_opts *opts = cb;
+		handle_ignore_submodules_arg(&opts->diff_options, value);
+		return 0;
+	}
+
+	if (!prefixcmp(var, "submodule."))
+		return parse_submodule_config_option(var, value);
+
+	return git_xmerge_config(var, value, NULL);
 }
 
 static int interactive_checkout(const char *revision, const char **pathspec,
@@ -692,7 +714,8 @@ int cmd_checkout(int argc, const char **argv, const char *prefix)
 	memset(&opts, 0, sizeof(opts));
 	memset(&new, 0, sizeof(new));
 
-	git_config(git_checkout_config, NULL);
+	gitmodules_config();
+	git_config(git_checkout_config, &opts);
 
 	opts.track = BRANCH_TRACK_UNSPECIFIED;
 

@@ -3,6 +3,9 @@
 #include "tag.h"
 #include "merge-recursive.h"
 
+static const char builtin_merge_recursive_usage[] =
+	"git %s <base>... -- <head> <remote> ...";
+
 static const char *better_branch_name(const char *branch)
 {
 	static char githead_env[8 + 40 + 1];
@@ -29,7 +32,7 @@ int cmd_merge_recursive(int argc, const char **argv, const char *prefix)
 		o.subtree_shift = "";
 
 	if (argc < 4)
-		usagef("%s <base>... -- <head> <remote> ...", argv[0]);
+		usagef(builtin_merge_recursive_usage, argv[0]);
 
 	for (i = 1; i < argc; ++i) {
 		const char *arg = argv[i];
@@ -45,6 +48,10 @@ int cmd_merge_recursive(int argc, const char **argv, const char *prefix)
 				o.subtree_shift = "";
 			else if (!prefixcmp(arg+2, "subtree="))
 				o.subtree_shift = arg + 10;
+			else if (!strcmp(arg+2, "renormalize"))
+				o.renormalize = 1;
+			else if (!strcmp(arg+2, "no-renormalize"))
+				o.renormalize = 0;
 			else
 				die("Unknown option %s", arg);
 			continue;

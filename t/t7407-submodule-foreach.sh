@@ -20,7 +20,7 @@ test_expect_success 'setup a submodule tree' '
 	echo file > file &&
 	git add file &&
 	test_tick &&
-	git commit -m upstream
+	git commit -m upstream &&
 	git clone . super &&
 	git clone super submodule &&
 	(
@@ -34,7 +34,7 @@ test_expect_success 'setup a submodule tree' '
 			submodule.sub2 submodule.foo2 &&
 		git config -f .gitmodules --rename-section \
 			submodule.sub3 submodule.foo3 &&
-		git add .gitmodules
+		git add .gitmodules &&
 		test_tick &&
 		git commit -m "submodules" &&
 		git submodule init sub1 &&
