@@ -240,6 +240,38 @@ test_expect_success 'fetch with a non-applying branch.<name>.merge' '
 	git fetch blub
 '
 
+# URL supplied to fetch does not match the url of the configured branch's remote
+test_expect_success 'fetch from GIT URL with a non-applying branch.<name>.merge [1]' '
+	one_head=$(cd one && git rev-parse HEAD) &&
+	this_head=$(git rev-parse HEAD) &&
+	git update-ref -d FETCH_HEAD &&
+	git fetch one &&
+	test $one_head = "$(git rev-parse --verify FETCH_HEAD)" &&
+	test $this_head = "$(git rev-parse --verify HEAD)"
+'
+
+# URL supplied to fetch matches the url of the configured branch's remote and
+# the merge spec matches the branch the remote HEAD points to
+test_expect_success 'fetch from GIT URL with a non-applying branch.<name>.merge [2]' '
+	one_ref=$(cd one && git symbolic-ref HEAD) &&
+	git config branch.master.remote blub &&
+	git config branch.master.merge "$one_ref" &&
+	git update-ref -d FETCH_HEAD &&
+	git fetch one &&
+	test $one_head = "$(git rev-parse --verify FETCH_HEAD)" &&
+	test $this_head = "$(git rev-parse --verify HEAD)"
+'
+
+# URL supplied to fetch matches the url of the configured branch's remote, but
+# the merge spec does not match the branch the remote HEAD points to
+test_expect_success 'fetch from GIT URL with a non-applying branch.<name>.merge [3]' '
+	git config branch.master.merge "${one_ref}_not" &&
+	git update-ref -d FETCH_HEAD &&
+	git fetch one &&
+	test $one_head = "$(git rev-parse --verify FETCH_HEAD)" &&
+	test $this_head = "$(git rev-parse --verify HEAD)"
+'
+
 # the strange name is: a\!'b
 test_expect_success 'quoting of a strangely named repo' '
 	test_must_fail git fetch "a\\!'\''b" > result 2>&1 &&

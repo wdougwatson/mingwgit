@@ -982,6 +982,7 @@ ifeq ($(uname_S),IRIX)
 	# NO_MMAP.  If you suspect that your compiler is not affected by this
 	# issue, comment out the NO_MMAP statement.
 	NO_MMAP = YesPlease
+	NO_REGEX = YesPlease
 	SNPRINTF_RETURNS_BOGUS = YesPlease
 	SHELL_PATH = /usr/gnu/bin/bash
 	NEEDS_LIBGEN = YesPlease
@@ -1000,6 +1001,7 @@ ifeq ($(uname_S),IRIX64)
 	# NO_MMAP.  If you suspect that your compiler is not affected by this
 	# issue, comment out the NO_MMAP statement.
 	NO_MMAP = YesPlease
+	NO_REGEX = YesPlease
 	SNPRINTF_RETURNS_BOGUS = YesPlease
 	SHELL_PATH=/usr/gnu/bin/bash
 	NEEDS_LIBGEN = YesPlease
@@ -1463,7 +1465,7 @@ ifdef NO_REGEX
 endif
 
 ifdef USE_NED_ALLOCATOR
-       COMPAT_CFLAGS += -DUSE_NED_ALLOCATOR -DOVERRIDE_STRDUP -DNDEBUG -DREPLACE_SYSTEM_ALLOCATOR -Icompat/nedmalloc
+       COMPAT_CFLAGS += -Icompat/nedmalloc
        COMPAT_OBJS += compat/nedmalloc/nedmalloc.o
 endif
 
@@ -1904,6 +1906,11 @@ endif
 
 ifdef NO_REGEX
 compat/regex/regex.o: EXTRA_CPPFLAGS = -DGAWK -DNO_MBSUPPORT
+endif
+
+ifdef USE_NED_ALLOCATOR
+compat/nedmalloc/nedmalloc.o: EXTRA_CPPFLAGS = \
+	-DNDEBUG -DOVERRIDE_STRDUP -DREPLACE_SYSTEM_ALLOCATOR
 endif
 
 git-%$X: %.o $(GITLIBS)

@@ -1,6 +1,7 @@
 #include "builtin.h"
-#include "exec_cmd.h"
 #include "cache.h"
+#include "exec_cmd.h"
+#include "help.h"
 #include "quote.h"
 #include "run-command.h"
 
@@ -55,9 +56,6 @@ static void commit_pager_choice(void) {
 static int handle_options(const char ***argv, int *argc, int *envchanged)
 {
 	int handled = 0;
-
-	if (!getenv("GIT_ASKPASS") && getenv("SSH_ASKPASS"))
-		setenv("GIT_ASKPASS", getenv("SSH_ASKPASS"), 1);
 
 	while (*argc > 0) {
 		const char *cmd = (*argv)[0];
@@ -137,7 +135,7 @@ static int handle_options(const char ***argv, int *argc, int *envchanged)
 				fprintf(stderr, "-c expects a configuration string\n" );
 				usage(git_usage_string);
 			}
-			git_config_parse_parameter((*argv)[1]);
+			git_config_push_parameter((*argv)[1]);
 			(*argv)++;
 			(*argc)--;
 		} else {
