@@ -7,6 +7,7 @@
 #
 # This program is licensed under the GPLv2
 
+use 5.008;
 use strict;
 use warnings;
 use CGI qw(:standard :escapeHTML -nosticky);
@@ -164,6 +165,12 @@ our @diff_opts = ('-M'); # taken from git_commit
 # Disables features that would allow repository owners to inject script into
 # the gitweb domain.
 our $prevent_xss = 0;
+
+# Path to the highlight executable to use (must be the one from
+# http://www.andre-simon.de due to assumptions about parameters and output).
+# Useful if highlight is not installed on your webserver's PATH.
+# [Default: highlight]
+our $highlight_bin = "++HIGHLIGHT_BIN++";
 
 # information about snapshot formats that gitweb is capable of serving
 our %known_snapshot_formats = (
@@ -774,10 +781,10 @@ sub evaluate_path_info {
 		'history',
 	);
 
-	# we want to catch
+	# we want to catch, among others
 	# [$hash_parent_base[:$file_parent]..]$hash_parent[:$file_name]
 	my ($parentrefname, $parentpathname, $refname, $pathname) =
-		($path_info =~ /^(?:(.+?)(?::(.+))?\.\.)?(.+?)(?::(.+))?$/);
+		($path_info =~ /^(?:(.+?)(?::(.+))?\.\.)?([^:]+?)?(?::(.+))?$/);
 
 	# first, analyze the 'current' part
 	if (defined $pathname) {
@@ -813,8 +820,15 @@ sub evaluate_path_info {
 		# hash_base instead. It should also be noted that hand-crafted
 		# links having 'history' as an action and no pathname or hash
 		# set will fail, but that happens regardless of PATH_INFO.
-		$input_params{'action'} ||= "shortlog";
-		if (grep { $_ eq $input_params{'action'} } @wants_base) {
+		if (defined $parentrefname) {
+			# if there is parent let the default be 'shortlog' action
+			# (for http://git.example.com/repo.git/A..B links); if there
+			# is no parent, dispatch will detect type of object and set
+			# action appropriately if required (if action is not set)
+			$input_params{'action'} ||= "shortlog";
+		}
+		if ($input_params{'action'} &&
+		    grep { $_ eq $input_params{'action'} } @wants_base) {
 			$input_params{'hash_base'} ||= $refname;
 		} else {
 			$input_params{'hash'} ||= $refname;
@@ -3360,7 +3374,8 @@ sub run_highlighter {
 	close $fd
 		or die_error(404, "Reading blob failed");
 	open $fd, quote_command(git_cmd(), "cat-file", "blob", $hash)." | ".
-	          "highlight --xhtml --fragment --syntax $syntax |"
+	          quote_command($highlight_bin).
+	          " --xhtml --fragment --syntax $syntax |"
 		or die_error(500, "Couldn't open file or run syntax highlighter");
 	return $fd;
 }

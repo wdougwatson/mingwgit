@@ -1472,6 +1472,10 @@ pack.compression::
 	not set,  defaults to -1, the zlib default, which is "a default
 	compromise between speed and compression (currently equivalent
 	to level 6)."
++
+Note that changing the compression level will not automatically recompress
+all existing objects. You can force recompression by passing the -F option
+to linkgit:git-repack[1].
 
 pack.deltaCacheSize::
 	The maximum memory in bytes used for caching deltas in
@@ -1556,12 +1560,12 @@ push.default::
 	no refspec is implied by any of the options given on the command
 	line. Possible values are:
 +
-* `nothing` do not push anything.
-* `matching` push all matching branches.
+* `nothing` - do not push anything.
+* `matching` - push all matching branches.
   All branches having the same name in both ends are considered to be
   matching. This is the default.
-* `tracking` push the current branch to its upstream branch.
-* `current` push the current branch to a branch of the same name.
+* `tracking` - push the current branch to its upstream branch.
+* `current` - push the current branch to a branch of the same name.
 
 rebase.stat::
 	Whether to show a diffstat of what changed upstream since the last
@@ -1733,6 +1737,7 @@ sendemail.to::
 sendemail.smtpdomain::
 sendemail.smtpserver::
 sendemail.smtpserverport::
+sendemail.smtpserveroption::
 sendemail.smtpuser::
 sendemail.thread::
 sendemail.validate::
@@ -1761,9 +1766,9 @@ status.showUntrackedFiles::
 	the untracked files. Possible values are:
 +
 --
-	- 'no'     - Show no untracked files
-	- 'normal' - Shows untracked files and directories
-	- 'all'    - Shows also individual files in untracked directories.
+* `no` - Show no untracked files.
+* `normal` - Show untracked files and directories.
+* `all` - Show also individual files in untracked directories.
 --
 +
 If this variable is not specified, it defaults to 'normal'.
