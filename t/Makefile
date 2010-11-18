@@ -11,15 +11,24 @@ SHELL_PATH ?= $(SHELL)
 PERL_PATH ?= /usr/bin/perl
 TAR ?= $(TAR)
 RM ?= rm -f
+PROVE ?= prove
+DEFAULT_TEST_TARGET ?= test
 
 # Shell quote;
 SHELL_PATH_SQ = $(subst ','\'',$(SHELL_PATH))
 
 T = $(wildcard t[0-9][0-9][0-9][0-9]-*.sh)
 TSVN = $(wildcard t91[0-9][0-9]-*.sh)
+TGITWEB = $(wildcard t95[0-9][0-9]-*.sh)
 
-all: pre-clean
+all: $(DEFAULT_TEST_TARGET)
+
+test: pre-clean
 	$(MAKE) aggregate-results-and-cleanup
+
+prove: pre-clean
+	@echo "*** prove ***"; GIT_CONFIG=.git/config $(PROVE) --exec '$(SHELL_PATH_SQ)' $(GIT_PROVE_OPTS) $(T) :: $(GIT_TEST_OPTS)
+	$(MAKE) clean
 
 $(T):
 	@echo "*** $@ ***"; GIT_CONFIG=.git/config '$(SHELL_PATH_SQ)' $@ $(GIT_TEST_OPTS)
@@ -45,6 +54,9 @@ aggregate-results:
 full-svn-test:
 	$(MAKE) $(TSVN) GIT_SVN_NO_OPTIMIZE_COMMITS=1 LC_ALL=C
 	$(MAKE) $(TSVN) GIT_SVN_NO_OPTIMIZE_COMMITS=0 LC_ALL=en_US.UTF-8
+
+gitweb-test:
+	$(MAKE) $(TGITWEB)
 
 valgrind:
 	GIT_TEST_OPTS=--valgrind $(MAKE)

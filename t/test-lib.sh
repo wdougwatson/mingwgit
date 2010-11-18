@@ -238,14 +238,51 @@ test_set_editor () {
 }
 
 test_decode_color () {
-	sed	-e 's/.\[1m/<WHITE>/g' \
-		-e 's/.\[31m/<RED>/g' \
-		-e 's/.\[32m/<GREEN>/g' \
-		-e 's/.\[33m/<YELLOW>/g' \
-		-e 's/.\[34m/<BLUE>/g' \
-		-e 's/.\[35m/<MAGENTA>/g' \
-		-e 's/.\[36m/<CYAN>/g' \
-		-e 's/.\[m/<RESET>/g'
+	awk '
+		function name(n) {
+			if (n == 0) return "RESET";
+			if (n == 1) return "BOLD";
+			if (n == 30) return "BLACK";
+			if (n == 31) return "RED";
+			if (n == 32) return "GREEN";
+			if (n == 33) return "YELLOW";
+			if (n == 34) return "BLUE";
+			if (n == 35) return "MAGENTA";
+			if (n == 36) return "CYAN";
+			if (n == 37) return "WHITE";
+			if (n == 40) return "BLACK";
+			if (n == 41) return "BRED";
+			if (n == 42) return "BGREEN";
+			if (n == 43) return "BYELLOW";
+			if (n == 44) return "BBLUE";
+			if (n == 45) return "BMAGENTA";
+			if (n == 46) return "BCYAN";
+			if (n == 47) return "BWHITE";
+		}
+		{
+			while (match($0, /\x1b\[[0-9;]*m/) != 0) {
+				printf "%s<", substr($0, 1, RSTART-1);
+				codes = substr($0, RSTART+2, RLENGTH-3);
+				if (length(codes) == 0)
+					printf "%s", name(0)
+				else {
+					n = split(codes, ary, ";");
+					sep = "";
+					for (i = 1; i <= n; i++) {
+						printf "%s%s", sep, name(ary[i]);
+						sep = ";"
+					}
+				}
+				printf ">";
+				$0 = substr($0, RSTART + RLENGTH, length($0) - RSTART - RLENGTH + 1);
+			}
+			print
+		}
+	'
+}
+
+nul_to_q () {
+	perl -pe 'y/\000/Q/'
 }
 
 q_to_nul () {
@@ -362,6 +399,15 @@ test_have_prereq () {
 	test $total_prereq = $ok_prereq
 }
 
+test_declared_prereq () {
+	case ",$test_prereq," in
+	*,$1,*)
+		return 0
+		;;
+	esac
+	return 1
+}
+
 # You are not expected to call test_ok_ and test_failure_ directly, use
 # the text_expect_* functions instead.
 
@@ -414,17 +460,17 @@ test_skip () {
 			break
 		esac
 	done
-	if test -z "$to_skip" && test -n "$prereq" &&
-	   ! test_have_prereq "$prereq"
+	if test -z "$to_skip" && test -n "$test_prereq" &&
+	   ! test_have_prereq "$test_prereq"
 	then
 		to_skip=t
 	fi
 	case "$to_skip" in
 	t)
 		of_prereq=
-		if test "$missing_prereq" != "$prereq"
+		if test "$missing_prereq" != "$test_prereq"
 		then
-			of_prereq=" of $prereq"
+			of_prereq=" of $test_prereq"
 		fi
 
 		say_color skip >&3 "skipping test: $@"
@@ -438,9 +484,10 @@ test_skip () {
 }
 
 test_expect_failure () {
-	test "$#" = 3 && { prereq=$1; shift; } || prereq=
+	test "$#" = 3 && { test_prereq=$1; shift; } || test_prereq=
 	test "$#" = 2 ||
 	error "bug in the test script: not 2 or 3 parameters to test-expect-failure"
+	export test_prereq
 	if ! test_skip "$@"
 	then
 		say >&3 "checking known breakage: $2"
@@ -456,9 +503,10 @@ test_expect_failure () {
 }
 
 test_expect_success () {
-	test "$#" = 3 && { prereq=$1; shift; } || prereq=
+	test "$#" = 3 && { test_prereq=$1; shift; } || test_prereq=
 	test "$#" = 2 ||
 	error "bug in the test script: not 2 or 3 parameters to test-expect-success"
+	export test_prereq
 	if ! test_skip "$@"
 	then
 		say >&3 "expecting success: $2"
@@ -500,11 +548,12 @@ test_expect_code () {
 # Usage: test_external description command arguments...
 # Example: test_external 'Perl API' perl ../path/to/test.pl
 test_external () {
-	test "$#" = 4 && { prereq=$1; shift; } || prereq=
+	test "$#" = 4 && { test_prereq=$1; shift; } || test_prereq=
 	test "$#" = 3 ||
 	error >&5 "bug in the test script: not 3 or 4 parameters to test_external"
 	descr="$1"
 	shift
+	export test_prereq
 	if ! test_skip "$descr" "$@"
 	then
 		# Announce the script to reduce confusion about the
