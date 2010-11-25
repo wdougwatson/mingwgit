@@ -48,7 +48,7 @@ cat >expect <<\EOF
 #
 #	new file:   dir2/added
 #
-# Changed but not updated:
+# Changes not staged for commit:
 #   (use "git add <file>..." to update what will be committed)
 #   (use "git checkout -- <file>..." to discard changes in working directory)
 #
@@ -77,7 +77,7 @@ cat >expect <<\EOF
 # Changes to be committed:
 #	new file:   dir2/added
 #
-# Changed but not updated:
+# Changes not staged for commit:
 #	modified:   dir1/modified
 #
 # Untracked files:
@@ -144,7 +144,7 @@ cat >expect <<EOF
 #
 #	new file:   dir2/added
 #
-# Changed but not updated:
+# Changes not staged for commit:
 #   (use "git add <file>..." to update what will be committed)
 #   (use "git checkout -- <file>..." to discard changes in working directory)
 #
@@ -171,7 +171,7 @@ cat >expect <<EOF
 # Changes to be committed:
 #	new file:   dir2/added
 #
-# Changed but not updated:
+# Changes not staged for commit:
 #	modified:   dir1/modified
 #
 # Untracked files not listed
@@ -206,7 +206,7 @@ cat >expect <<EOF
 #
 #	new file:   dir2/added
 #
-# Changed but not updated:
+# Changes not staged for commit:
 #   (use "git add <file>..." to update what will be committed)
 #   (use "git checkout -- <file>..." to discard changes in working directory)
 #
@@ -264,7 +264,7 @@ cat >expect <<EOF
 #
 #	new file:   dir2/added
 #
-# Changed but not updated:
+# Changes not staged for commit:
 #   (use "git add <file>..." to update what will be committed)
 #   (use "git checkout -- <file>..." to discard changes in working directory)
 #
@@ -324,7 +324,7 @@ cat >expect <<\EOF
 #
 #	new file:   ../dir2/added
 #
-# Changed but not updated:
+# Changes not staged for commit:
 #   (use "git add <file>..." to update what will be committed)
 #   (use "git checkout -- <file>..." to discard changes in working directory)
 #
@@ -396,7 +396,7 @@ cat >expect <<\EOF
 #
 #	<GREEN>new file:   dir2/added<RESET>
 #
-# Changed but not updated:
+# Changes not staged for commit:
 #   (use "git add <file>..." to update what will be committed)
 #   (use "git checkout -- <file>..." to discard changes in working directory)
 #
@@ -525,7 +525,7 @@ cat >expect <<\EOF
 #
 #	new file:   dir2/added
 #
-# Changed but not updated:
+# Changes not staged for commit:
 #   (use "git add <file>..." to update what will be committed)
 #   (use "git checkout -- <file>..." to discard changes in working directory)
 #
@@ -618,7 +618,7 @@ cat >expect <<EOF
 #	new file:   dir2/added
 #	new file:   sm
 #
-# Changed but not updated:
+# Changes not staged for commit:
 #   (use "git add <file>..." to update what will be committed)
 #   (use "git checkout -- <file>..." to discard changes in working directory)
 #
@@ -677,7 +677,7 @@ cat >expect <<EOF
 #	new file:   dir2/added
 #	new file:   sm
 #
-# Changed but not updated:
+# Changes not staged for commit:
 #   (use "git add <file>..." to update what will be committed)
 #   (use "git checkout -- <file>..." to discard changes in working directory)
 #
@@ -722,7 +722,7 @@ test_expect_success 'status -s submodule summary' '
 
 cat >expect <<EOF
 # On branch master
-# Changed but not updated:
+# Changes not staged for commit:
 #   (use "git add <file>..." to update what will be committed)
 #   (use "git checkout -- <file>..." to discard changes in working directory)
 #
@@ -770,7 +770,7 @@ cat >expect <<EOF
 #	new file:   dir2/added
 #	new file:   sm
 #
-# Changed but not updated:
+# Changes not staged for commit:
 #   (use "git add <file>..." to update what will be committed)
 #   (use "git checkout -- <file>..." to discard changes in working directory)
 #
@@ -823,7 +823,7 @@ cat > expect << EOF
 #
 #	modified:   sm
 #
-# Changed but not updated:
+# Changes not staged for commit:
 #   (use "git add <file>..." to update what will be committed)
 #   (use "git checkout -- <file>..." to discard changes in working directory)
 #
@@ -935,7 +935,7 @@ cat > expect << EOF
 #
 #	modified:   sm
 #
-# Changed but not updated:
+# Changes not staged for commit:
 #   (use "git add <file>..." to update what will be committed)
 #   (use "git checkout -- <file>..." to discard changes in working directory)
 #   (commit or discard the untracked or modified content in submodules)
@@ -993,7 +993,7 @@ cat > expect << EOF
 #
 #	modified:   sm
 #
-# Changed but not updated:
+# Changes not staged for commit:
 #   (use "git add <file>..." to update what will be committed)
 #   (use "git checkout -- <file>..." to discard changes in working directory)
 #
@@ -1071,7 +1071,7 @@ test_expect_success ".git/config ignore=dirty doesn't suppress submodule summary
 
 cat > expect << EOF
 # On branch master
-# Changed but not updated:
+# Changes not staged for commit:
 #   (use "git add <file>..." to update what will be committed)
 #   (use "git checkout -- <file>..." to discard changes in working directory)
 #

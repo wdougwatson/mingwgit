@@ -158,7 +158,7 @@ EOF
 
 test_expect_success 'stash branch' '
 	echo foo > file &&
-	git commit file -m first
+	git commit file -m first &&
 	echo bar > file &&
 	echo bar2 > file2 &&
 	git add file2 &&
@@ -256,7 +256,7 @@ test_expect_success 'stash rm and ignore' '
 	echo file >.gitignore &&
 	git stash save "rm and ignore" &&
 	test bar = "$(cat file)" &&
-	test file = "$(cat .gitignore)"
+	test file = "$(cat .gitignore)" &&
 	git stash apply &&
 	! test -r file &&
 	test file = "$(cat .gitignore)"
@@ -269,7 +269,7 @@ test_expect_success 'stash rm and ignore (stage .gitignore)' '
 	git add .gitignore &&
 	git stash save "rm and ignore (stage .gitignore)" &&
 	test bar = "$(cat file)" &&
-	! test -r .gitignore
+	! test -r .gitignore &&
 	git stash apply &&
 	! test -r file &&
 	test file = "$(cat .gitignore)"
