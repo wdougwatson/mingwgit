@@ -331,7 +331,8 @@ static struct option builtin_add_options[] = {
 
 static int add_config(const char *var, const char *value, void *cb)
 {
-	if (!strcasecmp(var, "add.ignore-errors")) {
+	if (!strcasecmp(var, "add.ignoreerrors") ||
+	    !strcasecmp(var, "add.ignore-errors")) {
 		ignore_add_errors = git_config_bool(var, value);
 		return 0;
 	}
@@ -446,7 +447,8 @@ int cmd_add(int argc, const char **argv, const char *prefix)
 			if (!seen[i] && pathspec[i][0]
 			    && !file_exists(pathspec[i])) {
 				if (ignore_missing) {
-					if (excluded(&dir, pathspec[i], DT_UNKNOWN))
+					int dtype = DT_UNKNOWN;
+					if (excluded(&dir, pathspec[i], &dtype))
 						dir_add_ignored(&dir, pathspec[i], strlen(pathspec[i]));
 				} else
 					die("pathspec '%s' did not match any files",

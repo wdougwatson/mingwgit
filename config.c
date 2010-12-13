@@ -410,7 +410,7 @@ unsigned long git_config_ulong(const char *name, const char *value)
 	return ret;
 }
 
-int git_config_maybe_bool(const char *name, const char *value)
+static int git_config_maybe_bool_text(const char *name, const char *value)
 {
 	if (!value)
 		return 1;
@@ -427,9 +427,21 @@ int git_config_maybe_bool(const char *name, const char *value)
 	return -1;
 }
 
+int git_config_maybe_bool(const char *name, const char *value)
+{
+	int v = git_config_maybe_bool_text(name, value);
+	if (0 <= v)
+		return v;
+	if (!strcmp(value, "0"))
+		return 0;
+	if (!strcmp(value, "1"))
+		return 1;
+	return -1;
+}
+
 int git_config_bool_or_int(const char *name, const char *value, int *is_bool)
 {
-	int v = git_config_maybe_bool(name, value);
+	int v = git_config_maybe_bool_text(name, value);
 	if (0 <= v) {
 		*is_bool = 1;
 		return v;
@@ -486,6 +498,13 @@ static int git_default_core_config(const char *var, const char *value)
 
 	if (!strcmp(var, "core.ignorecase")) {
 		ignore_case = git_config_bool(var, value);
+		return 0;
+	}
+
+	if (!strcmp(var, "core.abbrevguard")) {
+		unique_abbrev_extra_length = git_config_int(var, value);
+		if (unique_abbrev_extra_length < 0)
+			unique_abbrev_extra_length = 0;
 		return 0;
 	}
 

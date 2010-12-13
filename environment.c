@@ -21,6 +21,7 @@ int prefer_symlink_refs;
 int is_bare_repository_cfg = -1; /* unspecified */
 int log_all_ref_updates = -1; /* unspecified */
 int warn_ambiguous_refs = 1;
+int unique_abbrev_extra_length;
 int repository_format_version;
 const char *git_commit_encoding;
 const char *git_log_output_encoding;
@@ -87,6 +88,7 @@ const char * const local_repo_env[LOCAL_REPO_ENV_SIZE + 1] = {
 static void setup_git_env(void)
 {
 	git_dir = getenv(GIT_DIR_ENVIRONMENT);
+	git_dir = git_dir ? xstrdup(git_dir) : NULL;
 	if (!git_dir) {
 		git_dir = read_gitfile_gently(DEFAULT_GIT_DIR_ENVIRONMENT);
 		git_dir = git_dir ? xstrdup(git_dir) : NULL;
@@ -171,6 +173,43 @@ char *get_object_directory(void)
 	return git_object_dir;
 }
 
+int odb_mkstemp(char *template, size_t limit, const char *pattern)
+{
+	int fd;
+	/*
+	 * we let the umask do its job, don't try to be more
+	 * restrictive except to remove write permission.
+	 */
+	int mode = 0444;
+	snprintf(template, limit, "%s/%s",
+		 get_object_directory(), pattern);
+	fd = git_mkstemp_mode(template, mode);
+	if (0 <= fd)
+		return fd;
+
+	/* slow path */
+	/* some mkstemp implementations erase template on failure */
+	snprintf(template, limit, "%s/%s",
+		 get_object_directory(), pattern);
+	safe_create_leading_directories(template);
+	return xmkstemp_mode(template, mode);
+}
+
+int odb_pack_keep(char *name, size_t namesz, unsigned char *sha1)
+{
+	int fd;
+
+	snprintf(name, namesz, "%s/pack/pack-%s.keep",
+		 get_object_directory(), sha1_to_hex(sha1));
+	fd = open(name, O_RDWR|O_CREAT|O_EXCL, 0600);
+	if (0 <= fd)
+		return fd;
+
+	/* slow path */
+	safe_create_leading_directories(name);
+	return open(name, O_RDWR|O_CREAT|O_EXCL, 0600);
+}
+
 char *get_index_file(void)
 {
 	if (!git_index_file)
@@ -191,4 +230,15 @@ int set_git_dir(const char *path)
 		return error("Could not set GIT_DIR to '%s'", path);
 	setup_git_env();
 	return 0;
+}
+
+const char *get_log_output_encoding(void)
+{
+	return git_log_output_encoding ? git_log_output_encoding
+		: get_commit_output_encoding();
+}
+
+const char *get_commit_output_encoding(void)
+{
+	return git_commit_encoding ? git_commit_encoding : "UTF-8";
 }

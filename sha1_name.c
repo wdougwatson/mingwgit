@@ -206,7 +206,9 @@ const char *find_unique_abbrev(const unsigned char *sha1, int len)
 		if (exists
 		    ? !status
 		    : status == SHORT_NAME_NOT_FOUND) {
-			hex[len] = 0;
+			int cut_at = len + unique_abbrev_extra_length;
+			cut_at = (cut_at < 40) ? cut_at : 40;
+			hex[cut_at] = 0;
 			return hex;
 		}
 		len++;
@@ -932,6 +934,24 @@ int interpret_branch_name(const char *name, struct strbuf *buf)
 	strbuf_addstr(buf, cp);
 	free(cp);
 	return len;
+}
+
+int strbuf_branchname(struct strbuf *sb, const char *name)
+{
+	int len = strlen(name);
+	if (interpret_branch_name(name, sb) == len)
+		return 0;
+	strbuf_add(sb, name, len);
+	return len;
+}
+
+int strbuf_check_branch_ref(struct strbuf *sb, const char *name)
+{
+	strbuf_branchname(sb, name);
+	if (name[0] == '-')
+		return CHECK_REF_FORMAT_ERROR;
+	strbuf_splice(sb, 0, 0, "refs/heads/", 11);
+	return check_ref_format(sb->buf);
 }
 
 /*

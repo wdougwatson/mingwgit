@@ -398,21 +398,21 @@ if test -n "$ASCIIDOC"; then
 	AC_MSG_CHECKING([for asciidoc version])
 	asciidoc_version=`$ASCIIDOC --version 2>/dev/null`
 	case "${asciidoc_version}" in
-	asciidoc' '8*)
-		ASCIIDOC8=YesPlease
+	asciidoc' '7*)
+		ASCIIDOC7=YesPlease
 		AC_MSG_RESULT([${asciidoc_version} > 7])
 		;;
-	asciidoc' '7*)
-		ASCIIDOC8=
+	asciidoc' '8*)
+		ASCIIDOC7=
 		AC_MSG_RESULT([${asciidoc_version}])
 		;;
 	*)
-		ASCIIDOC8=
+		ASCIIDOC7=
 		AC_MSG_RESULT([${asciidoc_version} (unknown)])
 		;;
 	esac
 fi
-AC_SUBST(ASCIIDOC8)
+AC_SUBST(ASCIIDOC7)
 
 
 ## Checks for libraries.
@@ -829,6 +829,34 @@ GIT_CHECK_FUNC(strtok_r,
 [NO_STRTOK_R=],
 [NO_STRTOK_R=YesPlease])
 AC_SUBST(NO_STRTOK_R)
+#
+# Define NO_FNMATCH if you don't have fnmatch
+GIT_CHECK_FUNC(fnmatch,
+[NO_FNMATCH=],
+[NO_FNMATCH=YesPlease])
+AC_SUBST(NO_FNMATCH)
+#
+# Define NO_FNMATCH_CASEFOLD if your fnmatch function doesn't have the
+# FNM_CASEFOLD GNU extension.
+AC_CACHE_CHECK([whether the fnmatch function supports the FNMATCH_CASEFOLD GNU extension],
+ [ac_cv_c_excellent_fnmatch], [
+AC_EGREP_CPP(yippeeyeswehaveit,
+	AC_LANG_PROGRAM([
+#include <fnmatch.h>
+],
+[#ifdef FNM_CASEFOLD
+yippeeyeswehaveit
+#endif
+]),
+	[ac_cv_c_excellent_fnmatch=yes],
+	[ac_cv_c_excellent_fnmatch=no])
+])
+if test $ac_cv_c_excellent_fnmatch = yes; then
+	NO_FNMATCH_CASEFOLD=
+else
+	NO_FNMATCH_CASEFOLD=YesPlease
+fi
+AC_SUBST(NO_FNMATCH_CASEFOLD)
 #
 # Define NO_MEMMEM if you don't have memmem.
 GIT_CHECK_FUNC(memmem,

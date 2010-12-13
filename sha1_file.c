@@ -35,6 +35,8 @@ static size_t sz_fmt(size_t s) { return s; }
 
 const unsigned char null_sha1[20];
 
+static int git_open_noatime(const char *name, struct packed_git *p);
+
 int safe_create_leading_directories(char *path)
 {
 	char *pos = path + offset_1st_component(path);
@@ -298,7 +300,7 @@ static void read_info_alternates(const char * relative_base, int depth)
 	int fd;
 
 	sprintf(path, "%s/%s", relative_base, alt_file_name);
-	fd = open(path, O_RDONLY);
+	fd = git_open_noatime(path, NULL);
 	if (fd < 0)
 		return;
 	if (fstat(fd, &st) || (st.st_size == 0)) {
@@ -411,7 +413,7 @@ static int check_packed_git_idx(const char *path,  struct packed_git *p)
 	struct pack_idx_header *hdr;
 	size_t idx_size;
 	uint32_t version, nr, i, *index;
-	int fd = open(path, O_RDONLY);
+	int fd = git_open_noatime(path, p);
 	struct stat st;
 
 	if (fd < 0)
@@ -576,6 +578,21 @@ void release_pack_memory(size_t need, int fd)
 		; /* nothing */
 }
 
+void *xmmap(void *start, size_t length,
+	int prot, int flags, int fd, off_t offset)
+{
+	void *ret = mmap(start, length, prot, flags, fd, offset);
+	if (ret == MAP_FAILED) {
+		if (!length)
+			return NULL;
+		release_pack_memory(length, fd);
+		ret = mmap(start, length, prot, flags, fd, offset);
+		if (ret == MAP_FAILED)
+			die_errno("Out of memory? mmap failed");
+	}
+	return ret;
+}
+
 void close_pack_windows(struct packed_git *p)
 {
 	while (p->windows) {
@@ -655,9 +672,7 @@ static int open_packed_git_1(struct packed_git *p)
 	if (!p->index_data && open_pack_index(p))
 		return error("packfile %s index unavailable", p->pack_name);
 
-	p->pack_fd = open(p->pack_name, O_RDONLY);
-	while (p->pack_fd < 0 && errno == EMFILE && unuse_one_window(p, -1))
-		p->pack_fd = open(p->pack_name, O_RDONLY);
+	p->pack_fd = git_open_noatime(p->pack_name, p);
 	if (p->pack_fd < 0 || fstat(p->pack_fd, &st))
 		return -1;
 
@@ -803,10 +818,21 @@ static struct packed_git *alloc_packed_git(int extra)
 	return p;
 }
 
+static void try_to_free_pack_memory(size_t size)
+{
+	release_pack_memory(size, -1);
+}
+
 struct packed_git *add_packed_git(const char *path, int path_len, int local)
 {
+	static int have_set_try_to_free_routine;
 	struct stat st;
 	struct packed_git *p = alloc_packed_git(path_len + 2);
+
+	if (!have_set_try_to_free_routine) {
+		have_set_try_to_free_routine = 1;
+		set_try_to_free_routine(try_to_free_pack_memory);
+	}
 
 	/*
 	 * Make sure a corresponding .pack file exists and that
@@ -874,7 +900,7 @@ static void prepare_packed_git_one(char *objdir, int local)
 	sprintf(path, "%s/pack", objdir);
 	len = strlen(path);
 	dir = opendir(path);
-	while (!dir && errno == EMFILE && unuse_one_window(packed_git, -1))
+	while (!dir && errno == EMFILE && unuse_one_window(NULL, -1))
 		dir = opendir(path);
 	if (!dir) {
 		if (errno != ENOENT)
@@ -1022,18 +1048,31 @@ int check_sha1_signature(const unsigned char *sha1, void *map, unsigned long siz
 	return hashcmp(sha1, real_sha1) ? -1 : 0;
 }
 
-static int git_open_noatime(const char *name)
+static int git_open_noatime(const char *name, struct packed_git *p)
 {
 	static int sha1_file_open_flag = O_NOATIME;
-	int fd = open(name, O_RDONLY | sha1_file_open_flag);
 
-	/* Might the failure be due to O_NOATIME? */
-	if (fd < 0 && errno != ENOENT && sha1_file_open_flag) {
-		fd = open(name, O_RDONLY);
+	for (;;) {
+		int fd = open(name, O_RDONLY | sha1_file_open_flag);
 		if (fd >= 0)
+			return fd;
+
+		/* Might the failure be insufficient file descriptors? */
+		if (errno == EMFILE) {
+			if (unuse_one_window(p, -1))
+				continue;
+			else
+				return -1;
+		}
+
+		/* Might the failure be due to O_NOATIME? */
+		if (errno != ENOENT && sha1_file_open_flag) {
 			sha1_file_open_flag = 0;
+			continue;
+		}
+
+		return -1;
 	}
-	return fd;
 }
 
 static int open_sha1_file(const unsigned char *sha1)
@@ -1042,7 +1081,7 @@ static int open_sha1_file(const unsigned char *sha1)
 	char *name = sha1_file_name(sha1);
 	struct alternate_object_database *alt;
 
-	fd = git_open_noatime(name);
+	fd = git_open_noatime(name, NULL);
 	if (fd >= 0)
 		return fd;
 
@@ -1051,7 +1090,7 @@ static int open_sha1_file(const unsigned char *sha1)
 	for (alt = alt_odb_list; alt; alt = alt->next) {
 		name = alt->name;
 		fill_sha1_path(name, sha1);
-		fd = git_open_noatime(alt->base);
+		fd = git_open_noatime(alt->base, NULL);
 		if (fd >= 0)
 			return fd;
 	}
@@ -2312,7 +2351,7 @@ static int write_loose_object(const unsigned char *sha1, char *hdr, int hdrlen,
 
 	filename = sha1_file_name(sha1);
 	fd = create_tmpfile(tmpfile, sizeof(tmpfile), filename);
-	while (fd < 0 && errno == EMFILE && unuse_one_window(packed_git, -1))
+	while (fd < 0 && errno == EMFILE && unuse_one_window(NULL, -1))
 		fd = create_tmpfile(tmpfile, sizeof(tmpfile), filename);
 	if (fd < 0) {
 		if (errno == EACCES)
