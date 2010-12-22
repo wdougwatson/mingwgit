@@ -386,11 +386,7 @@ test_expect_success 'am works from file (relative path given) in subdirectory' '
 	git diff --exit-code second
 '
 
-case $(uname -s) in
-*MINGW*) test_expect=test_expect_failure;;
-*)       test_expect=test_expect_success;;
-esac
-$test_expect 'am works from file (absolute path given) in subdirectory' '
+test_expect_success 'am works from file (absolute path given) in subdirectory' '
 	rm -fr subdir &&
 	rm -fr .git/rebase-apply &&
 	git reset --hard &&
