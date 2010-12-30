@@ -431,6 +431,7 @@ TEST_PROGRAMS_NEED_X += test-run-command
 TEST_PROGRAMS_NEED_X += test-sha1
 TEST_PROGRAMS_NEED_X += test-sigchain
 TEST_PROGRAMS_NEED_X += test-string-pool
+TEST_PROGRAMS_NEED_X += test-subprocess
 TEST_PROGRAMS_NEED_X += test-svn-fe
 TEST_PROGRAMS_NEED_X += test-treap
 TEST_PROGRAMS_NEED_X += test-index-version
@@ -1003,6 +1004,7 @@ ifeq ($(uname_S),IRIX)
 	# issue, comment out the NO_MMAP statement.
 	NO_MMAP = YesPlease
 	NO_REGEX = YesPlease
+	NO_FNMATCH_CASEFOLD = YesPlease
 	SNPRINTF_RETURNS_BOGUS = YesPlease
 	SHELL_PATH = /usr/gnu/bin/bash
 	NEEDS_LIBGEN = YesPlease
@@ -1022,6 +1024,7 @@ ifeq ($(uname_S),IRIX64)
 	# issue, comment out the NO_MMAP statement.
 	NO_MMAP = YesPlease
 	NO_REGEX = YesPlease
+	NO_FNMATCH_CASEFOLD = YesPlease
 	SNPRINTF_RETURNS_BOGUS = YesPlease
 	SHELL_PATH=/usr/gnu/bin/bash
 	NEEDS_LIBGEN = YesPlease
