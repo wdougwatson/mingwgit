@@ -500,8 +500,23 @@ extern int index_name_is_other(const struct index_state *, const char *, int);
 extern int ie_match_stat(const struct index_state *, struct cache_entry *, struct stat *, unsigned int);
 extern int ie_modified(const struct index_state *, struct cache_entry *, struct stat *, unsigned int);
 
-extern int ce_path_match(const struct cache_entry *ce, const char **pathspec);
-extern int index_fd(unsigned char *sha1, int fd, struct stat *st, int write_object, enum object_type type, const char *path);
+struct pathspec {
+	const char **raw; /* get_pathspec() result, not freed by free_pathspec() */
+	int nr;
+	int has_wildcard:1;
+	int recursive:1;
+	int max_depth;
+	struct pathspec_item {
+		const char *match;
+		int len;
+		int has_wildcard:1;
+	} *items;
+};
+
+extern int init_pathspec(struct pathspec *, const char **);
+extern void free_pathspec(struct pathspec *);
+extern int ce_path_match(const struct cache_entry *ce, const struct pathspec *pathspec);
+extern int index_fd(unsigned char *sha1, int fd, struct stat *st, int write_object, enum object_type type, const char *path, int format_check);
 extern int index_path(unsigned char *sha1, const char *path, struct stat *st, int write_object);
 extern void fill_stat_cache_info(struct cache_entry *ce, struct stat *st);
 
@@ -511,7 +526,7 @@ extern void fill_stat_cache_info(struct cache_entry *ce, struct stat *st);
 #define REFRESH_IGNORE_MISSING	0x0008	/* ignore non-existent */
 #define REFRESH_IGNORE_SUBMODULES	0x0010	/* ignore submodules */
 #define REFRESH_IN_PORCELAIN	0x0020	/* user friendly output, not "needs update" */
-extern int refresh_index(struct index_state *, unsigned int flags, const char **pathspec, char *seen, char *header_msg);
+extern int refresh_index(struct index_state *, unsigned int flags, const char **pathspec, char *seen, const char *header_msg);
 
 struct lock_file {
 	struct lock_file *next;
@@ -608,7 +623,7 @@ enum rebase_setup_type {
 enum push_default_type {
 	PUSH_DEFAULT_NOTHING = 0,
 	PUSH_DEFAULT_MATCHING,
-	PUSH_DEFAULT_TRACKING,
+	PUSH_DEFAULT_UPSTREAM,
 	PUSH_DEFAULT_CURRENT
 };
 
@@ -676,9 +691,11 @@ static inline void hashclr(unsigned char *hash)
 
 #define EMPTY_TREE_SHA1_HEX \
 	"4b825dc642cb6eb9a060e54bf8d69288fbee4904"
-#define EMPTY_TREE_SHA1_BIN \
+#define EMPTY_TREE_SHA1_BIN_LITERAL \
 	 "\x4b\x82\x5d\xc6\x42\xcb\x6e\xb9\xa0\x60" \
 	 "\xe5\x4b\xf8\xd6\x92\x88\xfb\xee\x49\x04"
+#define EMPTY_TREE_SHA1_BIN \
+	 ((const unsigned char *) EMPTY_TREE_SHA1_BIN_LITERAL)
 
 int git_mkstemp(char *path, size_t n, const char *template);
 
@@ -997,6 +1014,7 @@ extern int git_config_maybe_bool(const char *, const char *);
 extern int git_config_string(const char **, const char *, const char *);
 extern int git_config_pathname(const char **, const char *, const char *);
 extern int git_config_set(const char *, const char *);
+extern int git_config_parse_key(const char *, char **, int *);
 extern int git_config_set_multivar(const char *, const char *, const char *, int);
 extern int git_config_rename_section(const char *, const char *);
 extern const char *git_etc_gitconfig(void);
