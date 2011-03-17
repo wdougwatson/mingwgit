@@ -20,8 +20,7 @@ static int zlib_compression_seen;
 
 const char *config_exclusive_filename = NULL;
 
-struct config_item
-{
+struct config_item {
 	struct config_item *next;
 	char *name;
 	char *value;
@@ -496,13 +495,6 @@ static int git_default_core_config(const char *var, const char *value)
 
 	if (!strcmp(var, "core.ignorecase")) {
 		ignore_case = git_config_bool(var, value);
-		return 0;
-	}
-
-	if (!strcmp(var, "core.abbrevguard")) {
-		unique_abbrev_extra_length = git_config_int(var, value);
-		if (unique_abbrev_extra_length < 0)
-			unique_abbrev_extra_length = 0;
 		return 0;
 	}
 

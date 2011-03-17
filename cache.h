@@ -503,13 +503,13 @@ extern int ie_modified(const struct index_state *, struct cache_entry *, struct 
 struct pathspec {
 	const char **raw; /* get_pathspec() result, not freed by free_pathspec() */
 	int nr;
-	int has_wildcard:1;
-	int recursive:1;
+	unsigned int has_wildcard:1;
+	unsigned int recursive:1;
 	int max_depth;
 	struct pathspec_item {
 		const char *match;
 		int len;
-		int has_wildcard:1;
+		unsigned int has_wildcard:1;
 	} *items;
 };
 
@@ -560,7 +560,6 @@ extern int assume_unchanged;
 extern int prefer_symlink_refs;
 extern int log_all_ref_updates;
 extern int warn_ambiguous_refs;
-extern int unique_abbrev_extra_length;
 extern int shared_repository;
 extern const char *apply_default_whitespace;
 extern const char *apply_default_ignorewhitespace;
@@ -586,7 +585,7 @@ extern enum safe_crlf safe_crlf;
 enum auto_crlf {
 	AUTO_CRLF_FALSE = 0,
 	AUTO_CRLF_TRUE = 1,
-	AUTO_CRLF_INPUT = -1,
+	AUTO_CRLF_INPUT = -1
 };
 
 extern enum auto_crlf auto_crlf;
@@ -914,7 +913,8 @@ extern struct packed_git {
 	time_t mtime;
 	int pack_fd;
 	unsigned pack_local:1,
-		 pack_keep:1;
+		 pack_keep:1,
+		 do_not_close:1;
 	unsigned char sha1[20];
 	/* something like ".git/objects/pack/xxxxx.pack" */
 	char pack_name[FLEX_ARRAY]; /* more */

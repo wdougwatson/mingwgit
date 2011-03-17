@@ -83,10 +83,8 @@ struct rename_df_conflict_info {
  * Since we want to write the index eventually, we cannot reuse the index
  * for these (temporary) data.
  */
-struct stage_data
-{
-	struct
-	{
+struct stage_data {
+	struct {
 		unsigned mode;
 		unsigned char sha[20];
 	} stages[4];
@@ -137,7 +135,6 @@ static void flush_output(struct merge_options *o)
 __attribute__((format (printf, 3, 4)))
 static void output(struct merge_options *o, int v, const char *fmt, ...)
 {
-	int len;
 	va_list ap;
 
 	if (!show(o, v))
@@ -148,21 +145,9 @@ static void output(struct merge_options *o, int v, const char *fmt, ...)
 	strbuf_setlen(&o->obuf, o->obuf.len + o->call_depth * 2);
 
 	va_start(ap, fmt);
-	len = vsnprintf(o->obuf.buf + o->obuf.len, strbuf_avail(&o->obuf), fmt, ap);
+	strbuf_vaddf(&o->obuf, fmt, ap);
 	va_end(ap);
 
-	if (len < 0)
-		len = 0;
-	if (len >= strbuf_avail(&o->obuf)) {
-		strbuf_grow(&o->obuf, len + 2);
-		va_start(ap, fmt);
-		len = vsnprintf(o->obuf.buf + o->obuf.len, strbuf_avail(&o->obuf), fmt, ap);
-		va_end(ap);
-		if (len >= strbuf_avail(&o->obuf)) {
-			die("this should not happen, your snprintf is broken");
-		}
-	}
-	strbuf_setlen(&o->obuf, o->obuf.len + len);
 	strbuf_add(&o->obuf, "\n", 1);
 	if (!o->buffer_output)
 		flush_output(o);
@@ -403,8 +388,7 @@ static void make_room_for_directories_of_df_conflicts(struct merge_options *o,
 	}
 }
 
-struct rename
-{
+struct rename {
 	struct diff_filepair *pair;
 	struct stage_data *src_entry;
 	struct stage_data *dst_entry;
@@ -717,8 +701,7 @@ static void update_file(struct merge_options *o,
 
 /* Low level file merging, update and removal */
 
-struct merge_file_info
-{
+struct merge_file_info {
 	unsigned char sha[20];
 	unsigned mode;
 	unsigned clean:1,
