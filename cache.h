@@ -5,6 +5,7 @@
 #include "strbuf.h"
 #include "hash.h"
 #include "advice.h"
+#include "gettext.h"
 
 #include SHA1_HEADER
 #ifndef git_SHA_CTX
@@ -731,9 +732,9 @@ static inline int is_absolute_path(const char *path)
 	return path[0] == '/' || has_dos_drive_prefix(path);
 }
 int is_directory(const char *);
-const char *make_absolute_path(const char *path);
-const char *make_nonrelative_path(const char *path);
-const char *make_relative_path(const char *abs, const char *base);
+const char *real_path(const char *path);
+const char *absolute_path(const char *path);
+const char *relative_path(const char *abs, const char *base);
 int normalize_path_copy(char *dst, const char *src);
 int longest_ancestor_length(const char *path, const char *prefix_list);
 char *strip_path_suffix(const char *path, const char *suffix);
@@ -1083,9 +1084,14 @@ extern void alloc_report(void);
 /* trace.c */
 __attribute__((format (printf, 1, 2)))
 extern void trace_printf(const char *format, ...);
+extern void trace_vprintf(const char *key, const char *format, va_list ap);
 __attribute__((format (printf, 2, 3)))
 extern void trace_argv_printf(const char **argv, const char *format, ...);
 extern void trace_repo_setup(const char *prefix);
+extern int trace_want(const char *key);
+extern void trace_strbuf(const char *key, const struct strbuf *buf);
+
+void packet_trace_identity(const char *prog);
 
 /* convert.c */
 /* returns 1 if *dst was used */
