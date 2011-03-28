@@ -7,6 +7,15 @@ Fixes since v1.7.4.1
  * Many documentation updates to match "git cmd -h" output and the
    git-cmd manual page.
 
+ * We used to keep one file descriptor open for each and every packfile
+   that we have a mmap window on it (read: "in use"), even when for very
+   tiny packfiles.  We now close the file descriptor early when the entire
+   packfile fits inside one mmap window.
+
+ * "git bisect visualize" tried to run "gitk" in windowing
+   environments even when "gitk" is not installed, resulting in a
+   strange error message.
+
  * "git clone /no/such/path" did not fail correctly.
 
  * "git commit" did not correctly error out when the user asked to use a
@@ -34,7 +43,14 @@ Fixes since v1.7.4.1
    to update the upstream branch it forked from is now called "upstream".
    The old name "tracking" is and will be supported.
 
+ * "git submodule update" used to honor the --merge/--rebase option (or
+   corresponding configuration variables) even for a newly cloned
+   subproject, which made no sense (so/submodule-no-update-first-time).
+
  * gitweb's "highlight" interface mishandled tabs.
+
+ * gitweb didn't understand timezones with GMT offset that is not
+   multiple of a whole hour.
 
  * gitweb had a few forward-incompatible syntactic constructs and
    also used incorrect variable when showing the file mode in a diff.

@@ -26,13 +26,8 @@
 #endif
 #endif
 
-#ifdef NO_C99_FORMAT
-#define SZ_FMT "lu"
-static unsigned long sz_fmt(size_t s) { return (unsigned long)s; }
-#else
-#define SZ_FMT "zu"
-static size_t sz_fmt(size_t s) { return s; }
-#endif
+#define SZ_FMT PRIuMAX
+static inline uintmax_t sz_fmt(size_t s) { return s; }
 
 const unsigned char null_sha1[20];
 
@@ -71,6 +66,35 @@ static struct cached_object *find_cached_object(const unsigned char *sha1)
 	if (!hashcmp(sha1, empty_tree.sha1))
 		return &empty_tree;
 	return NULL;
+}
+
+int mkdir_in_gitdir(const char *path)
+{
+	if (mkdir(path, 0777)) {
+		int saved_errno = errno;
+		struct stat st;
+		struct strbuf sb = STRBUF_INIT;
+
+		if (errno != EEXIST)
+			return -1;
+		/*
+		 * Are we looking at a path in a symlinked worktree
+		 * whose original repository does not yet have it?
+		 * e.g. .git/rr-cache pointing at its original
+		 * repository in which the user hasn't performed any
+		 * conflict resolution yet?
+		 */
+		if (lstat(path, &st) || !S_ISLNK(st.st_mode) ||
+		    strbuf_readlink(&sb, path, st.st_size) ||
+		    !is_absolute_path(sb.buf) ||
+		    mkdir(sb.buf, 0777)) {
+			strbuf_release(&sb);
+			errno = saved_errno;
+			return -1;
+		}
+		strbuf_release(&sb);
+	}
+	return adjust_shared_perm(path);
 }
 
 int safe_create_leading_directories(char *path)

@@ -76,7 +76,7 @@ static void write_constant(int fd, const char *str)
 		die_errno("Full write to remote helper failed");
 }
 
-const char *remove_ext_force(const char *url)
+static const char *remove_ext_force(const char *url)
 {
 	if (url) {
 		const char *colon = strchr(url, ':');
@@ -561,10 +561,9 @@ static int push_refs_with_push(struct transport *transport,
 	int mirror = flags & TRANSPORT_PUSH_MIRROR;
 	struct helper_data *data = transport->data;
 	struct strbuf buf = STRBUF_INIT;
-	struct child_process *helper;
 	struct ref *ref;
 
-	helper = get_helper(transport);
+	get_helper(transport);
 	if (!data->push)
 		return 1;
 

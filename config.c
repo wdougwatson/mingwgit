@@ -523,6 +523,14 @@ static int git_default_core_config(const char *var, const char *value)
 		return 0;
 	}
 
+	if (!strcmp(var, "core.abbrev")) {
+		int abbrev = git_config_int(var, value);
+		if (abbrev < minimum_abbrev || abbrev > 40)
+			return -1;
+		default_abbrev = abbrev;
+		return 0;
+	}
+
 	if (!strcmp(var, "core.loosecompression")) {
 		int level = git_config_int(var, value);
 		if (level == -1)
@@ -825,11 +833,6 @@ int git_config_system(void)
 	return !git_env_bool("GIT_CONFIG_NOSYSTEM", 0);
 }
 
-int git_config_global(void)
-{
-	return !git_env_bool("GIT_CONFIG_NOGLOBAL", 0);
-}
-
 int git_config_from_parameters(config_fn_t fn, void *data)
 {
 	static int loaded_environment;
@@ -861,7 +864,7 @@ int git_config_early(config_fn_t fn, void *data, const char *repo_config)
 	}
 
 	home = getenv("HOME");
-	if (git_config_global() && home) {
+	if (home) {
 		char *user_config = xstrdup(mkpath("%s/.gitconfig", home));
 		if (!access(user_config, R_OK)) {
 			ret += git_config_from_file(fn, user_config, data);
