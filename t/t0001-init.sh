@@ -180,7 +180,7 @@ test_expect_success 'GIT_DIR & GIT_WORK_TREE (2)' '
 	fi
 '
 
-test_expect_success 'reinit' '
+test_expect_success C_LOCALE_OUTPUT 'reinit' '
 
 	(
 		sane_unset GIT_CONFIG GIT_WORK_TREE GIT_CONFIG &&
@@ -369,6 +369,52 @@ test_expect_success 'init prefers command line to GIT_DIR' '
 	GIT_DIR=otherdir git --bare init newdir &&
 	test -d newdir/refs &&
 	! test -d otherdir/refs
+'
+
+test_expect_success 'init with separate gitdir' '
+	rm -rf newdir &&
+	git init --separate-git-dir realgitdir newdir &&
+	echo "gitdir: `pwd`/realgitdir" >expected &&
+	test_cmp expected newdir/.git &&
+	test -d realgitdir/refs
+'
+
+test_expect_success 're-init to update git link' '
+	(
+	cd newdir &&
+	git init --separate-git-dir ../surrealgitdir
+	) &&
+	echo "gitdir: `pwd`/surrealgitdir" >expected &&
+	test_cmp expected newdir/.git &&
+	test -d surrealgitdir/refs &&
+	! test -d realgitdir/refs
+'
+
+test_expect_success 're-init to move gitdir' '
+	rm -rf newdir realgitdir surrealgitdir &&
+	git init newdir &&
+	(
+	cd newdir &&
+	git init --separate-git-dir ../realgitdir
+	) &&
+	echo "gitdir: `pwd`/realgitdir" >expected &&
+	test_cmp expected newdir/.git &&
+	test -d realgitdir/refs
+'
+
+test_expect_success 're-init to move gitdir symlink' '
+	rm -rf newdir realgitdir &&
+	git init newdir &&
+	(
+	cd newdir &&
+	mv .git here &&
+	ln -s here .git &&
+	git init -L ../realgitdir
+	) &&
+	echo "gitdir: `pwd`/realgitdir" >expected &&
+	test_cmp expected newdir/.git &&
+	test -d realgitdir/refs &&
+	! test -d newdir/here
 '
 
 test_done

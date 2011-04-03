@@ -46,7 +46,16 @@ unset VISUAL
 unset EMAIL
 unset $(perl -e '
 	my @env = keys %ENV;
-	my @vars = grep(/^GIT_/ && !/^GIT_(TRACE|DEBUG|USE_LOOKUP)/, @env);
+	my $ok = join("|", qw(
+		TRACE
+		DEBUG
+		USE_LOOKUP
+		TEST
+		.*_TEST
+		PROVE
+		VALGRIND
+	));
+	my @vars = grep(/^GIT_/ && !/^GIT_($ok)/o, @env);
 	print join("\n", @vars);
 ')
 GIT_AUTHOR_EMAIL=author@example.com
@@ -984,13 +993,13 @@ rm -fr "$test" || {
 	exit 1
 }
 
+HOME="$TRASH_DIRECTORY"
+export HOME
+
 test_create_repo "$test"
 # Use -P to resolve symlinks in our working directory so that the cwd
 # in subprocesses like git equals our $PWD (for pathname comparisons).
 cd -P "$test" || exit 1
-
-HOME=$(pwd)
-export HOME
 
 this_test=${0##*/}
 this_test=${this_test%%-*}

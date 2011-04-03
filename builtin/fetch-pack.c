@@ -230,16 +230,17 @@ static void insert_alternate_refs(void)
 }
 
 #define INITIAL_FLUSH 16
+#define PIPESAFE_FLUSH 32
 #define LARGE_FLUSH 1024
 
 static int next_flush(int count)
 {
-	if (count < INITIAL_FLUSH * 2)
-		count += INITIAL_FLUSH;
-	else if (count < LARGE_FLUSH)
+	int flush_limit = args.stateless_rpc ? LARGE_FLUSH : PIPESAFE_FLUSH;
+
+	if (count < flush_limit)
 		count <<= 1;
 	else
-		count += LARGE_FLUSH;
+		count += flush_limit;
 	return count;
 }
 
@@ -735,7 +736,8 @@ static struct ref *do_fetch_pack(int fd[2],
 		if (server_supports("no-done")) {
 			if (args.verbose)
 				fprintf(stderr, "Server supports no-done\n");
-			no_done = 1;
+			if (args.stateless_rpc)
+				no_done = 1;
 		}
 	}
 	else if (server_supports("multi_ack")) {

@@ -150,11 +150,21 @@ test_expect_success 'will not overwrite untracked file on unborn branch' '
 	git rm -fr . &&
 	git checkout --orphan new &&
 	cp important c0.c &&
+	test_must_fail git merge c0 2>out
+'
+
+test_expect_success C_LOCALE_OUTPUT 'will not overwrite untracked file on unborn branch: output' '
+	test_cmp out expect
+'
+
+test_expect_success 'will not overwrite untracked file on unborn branch .git/MERGE_HEAD sanity etc.' '
 	test_when_finished "rm c0.c" &&
-	test_must_fail git merge c0 2>out &&
-	test_cmp out expect &&
 	test_path_is_missing .git/MERGE_HEAD &&
 	test_cmp important c0.c
+'
+
+test_expect_success 'failed merge leaves unborn branch in the womb' '
+	test_must_fail git rev-parse --verify HEAD
 '
 
 test_expect_success 'set up unborn branch and content' '

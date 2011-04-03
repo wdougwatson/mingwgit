@@ -62,7 +62,7 @@ Internal whitespace within a variable value is retained verbatim.
 
 The values following the equals sign in variable assign are all either
 a string, an integer, or a boolean.  Boolean values may be given as yes/no,
-0/1, true/false or on/off.  Case is not significant in boolean values, when
+1/0, true/false or on/off.  Case is not significant in boolean values, when
 converting value to the canonical form using '--bool' type specifier;
 'git config' will ensure that the output is "true" or "false".
 
@@ -1097,6 +1097,12 @@ All gitcvs variables except for 'gitcvs.usecrlfattr' and
 'gitcvs.<access_method>.<varname>' (where 'access_method'
 is one of "ext" and "pserver") to make them apply only for the given
 access method.
+
+grep.lineNumber::
+	If set to true, enable '-n' option by default.
+
+grep.extendedRegexp::
+	If set to true, enable '--extended-regexp' option by default.
 
 gui.commitmsgwidth::
 	Defines how wide the commit message window is in the
