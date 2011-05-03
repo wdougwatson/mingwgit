@@ -49,13 +49,8 @@ static int parse_decoration_style(const char *var, const char *value)
 	return -1;
 }
 
-static void cmd_log_init(int argc, const char **argv, const char *prefix,
-			 struct rev_info *rev, struct setup_revision_opt *opt)
+static void cmd_log_init_defaults(struct rev_info *rev)
 {
-	int i;
-	int decoration_given = 0;
-	struct userformat_want w;
-
 	rev->abbrev = DEFAULT_ABBREV;
 	rev->commit_format = CMIT_FMT_DEFAULT;
 	if (fmt_pretty)
@@ -68,7 +63,14 @@ static void cmd_log_init(int argc, const char **argv, const char *prefix,
 
 	if (default_date_mode)
 		rev->date_mode = parse_date_format(default_date_mode);
+}
 
+static void cmd_log_init_finish(int argc, const char **argv, const char *prefix,
+			 struct rev_info *rev, struct setup_revision_opt *opt)
+{
+	int i;
+	int decoration_given = 0;
+	struct userformat_want w;
 	/*
 	 * Check for -h before setup_revisions(), or "git log -h" will
 	 * fail when run without a git directory.
@@ -126,6 +128,13 @@ static void cmd_log_init(int argc, const char **argv, const char *prefix,
 		load_ref_decorations(decoration_style);
 	}
 	setup_pager();
+}
+
+static void cmd_log_init(int argc, const char **argv, const char *prefix,
+			 struct rev_info *rev, struct setup_revision_opt *opt)
+{
+	cmd_log_init_defaults(rev);
+	cmd_log_init_finish(argc, argv, prefix, rev, opt);
 }
 
 /*
@@ -247,6 +256,8 @@ static void finish_early_output(struct rev_info *rev)
 static int cmd_log_walk(struct rev_info *rev)
 {
 	struct commit *commit;
+	int saved_nrl = 0;
+	int saved_dcctc = 0;
 
 	if (rev->early_output)
 		setup_early_output(rev);
@@ -277,7 +288,14 @@ static int cmd_log_walk(struct rev_info *rev)
 		}
 		free_commit_list(commit->parents);
 		commit->parents = NULL;
+		if (saved_nrl < rev->diffopt.needed_rename_limit)
+			saved_nrl = rev->diffopt.needed_rename_limit;
+		if (rev->diffopt.degraded_cc_to_c)
+			saved_dcctc = 1;
 	}
+	rev->diffopt.degraded_cc_to_c = saved_dcctc;
+	rev->diffopt.needed_rename_limit = saved_nrl;
+
 	if (rev->diffopt.output_format & DIFF_FORMAT_CHECKDIFF &&
 	    DIFF_OPT_TST(&rev->diffopt, CHECK_FAILED)) {
 		return 02;
@@ -486,16 +504,11 @@ int cmd_log_reflog(int argc, const char **argv, const char *prefix)
 	rev.verbose_header = 1;
 	memset(&opt, 0, sizeof(opt));
 	opt.def = "HEAD";
-	cmd_log_init(argc, argv, prefix, &rev, &opt);
-
-	/*
-	 * This means that we override whatever commit format the user gave
-	 * on the cmd line.  Sad, but cmd_log_init() currently doesn't
-	 * allow us to set a different default.
-	 */
+	cmd_log_init_defaults(&rev);
 	rev.commit_format = CMIT_FMT_ONELINE;
 	rev.use_terminator = 1;
 	rev.always_show_header = 1;
+	cmd_log_init_finish(argc, argv, prefix, &rev, &opt);
 
 	return cmd_log_walk(&rev);
 }
@@ -623,7 +636,7 @@ static FILE *realstdout = NULL;
 static const char *output_directory = NULL;
 static int outdir_offset;
 
-static int reopen_stdout(struct commit *commit, struct rev_info *rev)
+static int reopen_stdout(struct commit *commit, struct rev_info *rev, int quiet)
 {
 	struct strbuf filename = STRBUF_INIT;
 	int suffix_len = strlen(fmt_patch_suffix) + 1;
@@ -639,7 +652,7 @@ static int reopen_stdout(struct commit *commit, struct rev_info *rev)
 
 	get_patch_filename(commit, rev->nr, fmt_patch_suffix, &filename);
 
-	if (!DIFF_OPT_TST(&rev->diffopt, QUICK))
+	if (!quiet)
 		fprintf(realstdout, "%s\n", filename.buf + outdir_offset);
 
 	if (freopen(filename.buf, "w", stdout) == NULL)
@@ -718,7 +731,8 @@ static void print_signature(void)
 static void make_cover_letter(struct rev_info *rev, int use_stdout,
 			      int numbered, int numbered_files,
 			      struct commit *origin,
-			      int nr, struct commit **list, struct commit *head)
+			      int nr, struct commit **list, struct commit *head,
+			      int quiet)
 {
 	const char *committer;
 	const char *subject_start = NULL;
@@ -754,7 +768,7 @@ static void make_cover_letter(struct rev_info *rev, int use_stdout,
 			sha1_to_hex(head->object.sha1), committer, committer);
 	}
 
-	if (!use_stdout && reopen_stdout(commit, rev))
+	if (!use_stdout && reopen_stdout(commit, rev, quiet))
 		return;
 
 	if (commit) {
@@ -995,6 +1009,7 @@ int cmd_format_patch(int argc, const char **argv, const char *prefix)
 	char *add_signoff = NULL;
 	struct strbuf buf = STRBUF_INIT;
 	int use_patch_format = 0;
+	int quiet = 0;
 	const struct option builtin_format_patch_options[] = {
 		{ OPTION_CALLBACK, 'n', "numbered", &numbered, NULL,
 			    "use [PATCH n/m] even with a single patch",
@@ -1050,6 +1065,8 @@ int cmd_format_patch(int argc, const char **argv, const char *prefix)
 			    PARSE_OPT_OPTARG, thread_callback },
 		OPT_STRING(0, "signature", &signature, "signature",
 			    "add a signature"),
+		OPT_BOOLEAN(0, "quiet", &quiet,
+			    "don't print the patch filenames"),
 		OPT_END()
 	};
 
@@ -1259,7 +1276,7 @@ int cmd_format_patch(int argc, const char **argv, const char *prefix)
 		if (thread)
 			gen_message_id(&rev, "cover");
 		make_cover_letter(&rev, use_stdout, numbered, numbered_files,
-				  origin, nr, list, head);
+				  origin, nr, list, head, quiet);
 		total++;
 		start_number--;
 	}
@@ -1305,7 +1322,7 @@ int cmd_format_patch(int argc, const char **argv, const char *prefix)
 		}
 
 		if (!use_stdout && reopen_stdout(numbered_files ? NULL : commit,
-						 &rev))
+						 &rev, quiet))
 			die(_("Failed to create output files"));
 		shown = log_tree_commit(&rev, commit);
 		free(commit->buffer);

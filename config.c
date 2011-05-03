@@ -133,23 +133,21 @@ static int get_next_char(void)
 
 static char *parse_value(void)
 {
-	static char value[1024];
-	int quote = 0, comment = 0, len = 0, space = 0;
+	static struct strbuf value = STRBUF_INIT;
+	int quote = 0, comment = 0, space = 0;
 
+	strbuf_reset(&value);
 	for (;;) {
 		int c = get_next_char();
-		if (len >= sizeof(value) - 1)
-			return NULL;
 		if (c == '\n') {
 			if (quote)
 				return NULL;
-			value[len] = 0;
-			return value;
+			return value.buf;
 		}
 		if (comment)
 			continue;
 		if (isspace(c) && !quote) {
-			if (len)
+			if (value.len)
 				space++;
 			continue;
 		}
@@ -160,7 +158,7 @@ static char *parse_value(void)
 			}
 		}
 		for (; space; space--)
-			value[len++] = ' ';
+			strbuf_addch(&value, ' ');
 		if (c == '\\') {
 			c = get_next_char();
 			switch (c) {
@@ -182,14 +180,14 @@ static char *parse_value(void)
 			default:
 				return NULL;
 			}
-			value[len++] = c;
+			strbuf_addch(&value, c);
 			continue;
 		}
 		if (c == '"') {
 			quote = 1-quote;
 			continue;
 		}
-		value[len++] = c;
+		strbuf_addch(&value, c);
 	}
 }
 
@@ -564,6 +562,12 @@ static int git_default_core_config(const char *var, const char *value)
 		if (packed_git_window_size < 1)
 			packed_git_window_size = 1;
 		packed_git_window_size *= pgsz_x2;
+		return 0;
+	}
+
+	if (!strcmp(var, "core.bigfilethreshold")) {
+		long n = git_config_int(var, value);
+		big_file_threshold = 0 < n ? n : 0;
 		return 0;
 	}
 
