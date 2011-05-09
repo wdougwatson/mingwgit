@@ -6,7 +6,7 @@
 #include "run-command.h"
 
 const char git_usage_string[] =
-	"git [--version] [--exec-path[=<path>]] [--html-path]\n"
+	"git [--version] [--exec-path[=<path>]] [--html-path] [--man-path] [--info-path]\n"
 	"           [-p|--paginate|--no-pager] [--no-replace-objects]\n"
 	"           [--bare] [--git-dir=<path>] [--work-tree=<path>]\n"
 	"           [-c name=value] [--help]\n"
@@ -95,6 +95,12 @@ static int handle_options(const char ***argv, int *argc, int *envchanged)
 		} else if (!strcmp(cmd, "--html-path")) {
 			puts(system_path(GIT_HTML_PATH));
 			exit(0);
+		} else if (!strcmp(cmd, "--man-path")) {
+			puts(system_path(GIT_MAN_PATH));
+			exit(0);
+		} else if (!strcmp(cmd, "--info-path")) {
+			puts(system_path(GIT_INFO_PATH));
+			exit(0);
 		} else if (!strcmp(cmd, "-p") || !strcmp(cmd, "--paginate")) {
 			use_pager = 1;
 		} else if (!strcmp(cmd, "--no-pager")) {
@@ -179,6 +185,8 @@ static int handle_alias(int *argcp, const char ***argv)
 		if (alias_string[0] == '!') {
 			const char **alias_argv;
 			int argc = *argcp, i;
+			struct strbuf sb = STRBUF_INIT;
+			const char *env[2];
 
 			commit_pager_choice();
 
@@ -189,7 +197,13 @@ static int handle_alias(int *argcp, const char ***argv)
 				alias_argv[i] = (*argv)[i];
 			alias_argv[argc] = NULL;
 
-			ret = run_command_v_opt(alias_argv, RUN_USING_SHELL);
+			strbuf_addstr(&sb, "GIT_PREFIX=");
+			if (subdir)
+				strbuf_addstr(&sb, subdir);
+			env[0] = sb.buf;
+			env[1] = NULL;
+			ret = run_command_v_opt_cd_env(alias_argv, RUN_USING_SHELL, NULL, env);
+			strbuf_release(&sb);
 			if (ret >= 0)   /* normal exit */
 				exit(ret);
 
