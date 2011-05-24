@@ -756,13 +756,23 @@ char *strip_path_suffix(const char *path, const char *suffix);
 int daemon_avoid_alias(const char *path);
 int offset_1st_component(const char *path);
 
-/* Read and unpack a sha1 file into memory, write memory to a sha1 file */
-extern int sha1_object_info(const unsigned char *, unsigned long *);
-extern void *read_sha1_file_repl(const unsigned char *sha1, enum object_type *type, unsigned long *size, const unsigned char **replacement);
+/* object replacement */
+#define READ_SHA1_FILE_REPLACE 1
+extern void *read_sha1_file_extended(const unsigned char *sha1, enum object_type *type, unsigned long *size, unsigned flag);
 static inline void *read_sha1_file(const unsigned char *sha1, enum object_type *type, unsigned long *size)
 {
-	return read_sha1_file_repl(sha1, type, size, NULL);
+	return read_sha1_file_extended(sha1, type, size, READ_SHA1_FILE_REPLACE);
 }
+extern const unsigned char *do_lookup_replace_object(const unsigned char *sha1);
+static inline const unsigned char *lookup_replace_object(const unsigned char *sha1)
+{
+	if (!read_replace_refs)
+		return sha1;
+	return do_lookup_replace_object(sha1);
+}
+
+/* Read and unpack a sha1 file into memory, write memory to a sha1 file */
+extern int sha1_object_info(const unsigned char *, unsigned long *);
 extern int hash_sha1_file(const void *buf, unsigned long len, const char *type, unsigned char *sha1);
 extern int write_sha1_file(const void *buf, unsigned long len, const char *type, unsigned char *return_sha1);
 extern int pretend_sha1_file(void *, unsigned long, enum object_type, unsigned char *);
@@ -800,15 +810,15 @@ struct object_context {
 };
 
 extern int get_sha1(const char *str, unsigned char *sha1);
-extern int get_sha1_with_mode_1(const char *str, unsigned char *sha1, unsigned *mode, int gently, const char *prefix);
+extern int get_sha1_with_mode_1(const char *str, unsigned char *sha1, unsigned *mode, int only_to_die, const char *prefix);
 static inline int get_sha1_with_mode(const char *str, unsigned char *sha1, unsigned *mode)
 {
-	return get_sha1_with_mode_1(str, sha1, mode, 1, NULL);
+	return get_sha1_with_mode_1(str, sha1, mode, 0, NULL);
 }
-extern int get_sha1_with_context_1(const char *name, unsigned char *sha1, struct object_context *orc, int gently, const char *prefix);
+extern int get_sha1_with_context_1(const char *name, unsigned char *sha1, struct object_context *orc, int only_to_die, const char *prefix);
 static inline int get_sha1_with_context(const char *str, unsigned char *sha1, struct object_context *orc)
 {
-	return get_sha1_with_context_1(str, sha1, orc, 1, NULL);
+	return get_sha1_with_context_1(str, sha1, orc, 0, NULL);
 }
 extern int get_sha1_hex(const char *hex, unsigned char *sha1);
 extern char *sha1_to_hex(const unsigned char *sha1);	/* static buffer result! */
@@ -975,6 +985,7 @@ extern struct ref *find_ref_by_name(const struct ref *list, const char *name);
 extern char *git_getpass(const char *prompt);
 extern struct child_process *git_connect(int fd[2], const char *url, const char *prog, int flags);
 extern int finish_connect(struct child_process *conn);
+extern int git_connection_is_socket(struct child_process *conn);
 extern int path_match(const char *path, int nr, char **match);
 struct extra_have_objects {
 	int nr, alloc;
@@ -1011,6 +1022,16 @@ extern const char *packed_object_info_detail(struct packed_git *, off_t, unsigne
 
 /* Dumb servers support */
 extern int update_server_info(int);
+
+/* git_config_parse_key() returns these negated: */
+#define CONFIG_INVALID_KEY 1
+#define CONFIG_NO_SECTION_OR_NAME 2
+/* git_config_set(), git_config_set_multivar() return the above or these: */
+#define CONFIG_NO_LOCK -1
+#define CONFIG_INVALID_FILE 3
+#define CONFIG_NO_WRITE 4
+#define CONFIG_NOTHING_SET 5
+#define CONFIG_INVALID_PATTERN 6
 
 typedef int (*config_fn_t)(const char *, const char *, void *);
 extern int git_default_config(const char *, const char *, void *);
