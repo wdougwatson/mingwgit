@@ -115,6 +115,14 @@ our $projects_list = "++GITWEB_LIST++";
 # the width (in characters) of the projects list "Description" column
 our $projects_list_description_width = 25;
 
+# group projects by category on the projects list
+# (enabled if this variable evaluates to true)
+our $projects_list_group_categories = 0;
+
+# default category if none specified
+# (leave the empty string for no category)
+our $project_list_default_category = "";
+
 # default order of projects list
 # valid values are none, project, descr, owner, and age
 our $default_projects_order = "project";
@@ -483,6 +491,18 @@ our %feature = (
 		'override' => 0,
 		'default' => [0]},
 
+	# Enable and configure ability to change common timezone for dates
+	# in gitweb output via JavaScript.  Enabled by default.
+	# Project specific override is not supported.
+	'javascript-timezone' => {
+		'override' => 0,
+		'default' => [
+			'local',     # default timezone: 'utc', 'local', or '(-|+)HHMM' format,
+			             # or undef to turn off this feature
+			'gitweb_tz', # name of cookie where to store selected timezone
+			'datetime',  # CSS class used to mark up dates for manipulation
+		]},
+
 	# Syntax highlighting support. This is based on Daniel Svensson's
 	# and Sham Chukoury's work in gitweb-xmms2.git.
 	# It requires the 'highlight' program present in $PATH,
@@ -623,18 +643,30 @@ sub filter_snapshot_fmts {
 # if it is true then gitweb config would be run for each request.
 our $per_request_config = 1;
 
+# read and parse gitweb config file given by its parameter.
+# returns true on success, false on recoverable error, allowing
+# to chain this subroutine, using first file that exists.
+# dies on errors during parsing config file, as it is unrecoverable.
+sub read_config_file {
+	my $filename = shift;
+	return unless defined $filename;
+	# die if there are errors parsing config file
+	if (-e $filename) {
+		do $filename;
+		die $@ if $@;
+		return 1;
+	}
+	return;
+}
+
 our ($GITWEB_CONFIG, $GITWEB_CONFIG_SYSTEM);
 sub evaluate_gitweb_config {
 	our $GITWEB_CONFIG = $ENV{'GITWEB_CONFIG'} || "++GITWEB_CONFIG++";
 	our $GITWEB_CONFIG_SYSTEM = $ENV{'GITWEB_CONFIG_SYSTEM'} || "++GITWEB_CONFIG_SYSTEM++";
-	# die if there are errors parsing config file
-	if (-e $GITWEB_CONFIG) {
-		do $GITWEB_CONFIG;
-		die $@ if $@;
-	} elsif (-e $GITWEB_CONFIG_SYSTEM) {
-		do $GITWEB_CONFIG_SYSTEM;
-		die $@ if $@;
-	}
+
+	# use first config file that exists
+	read_config_file($GITWEB_CONFIG) or
+	read_config_file($GITWEB_CONFIG_SYSTEM);
 }
 
 # Get loadavg of system, to compare against $maxload.
@@ -2562,19 +2594,33 @@ sub git_get_path_by_hash {
 ## ......................................................................
 ## git utility functions, directly accessing git repository
 
-sub git_get_project_description {
-	my $path = shift;
+# get the value of config variable either from file named as the variable
+# itself in the repository ($GIT_DIR/$name file), or from gitweb.$name
+# configuration variable in the repository config file.
+sub git_get_file_or_project_config {
+	my ($path, $name) = @_;
 
 	$git_dir = "$projectroot/$path";
-	open my $fd, '<', "$git_dir/description"
-		or return git_get_project_config('description');
-	my $descr = <$fd>;
+	open my $fd, '<', "$git_dir/$name"
+		or return git_get_project_config($name);
+	my $conf = <$fd>;
 	close $fd;
-	if (defined $descr) {
-		chomp $descr;
+	if (defined $conf) {
+		chomp $conf;
 	}
-	return $descr;
+	return $conf;
 }
+
+sub git_get_project_description {
+	my $path = shift;
+	return git_get_file_or_project_config($path, 'description');
+}
+
+sub git_get_project_category {
+	my $path = shift;
+	return git_get_file_or_project_config($path, 'category');
+}
+
 
 # supported formats:
 # * $GIT_DIR/ctags/<tagname> file (in 'ctags' subdirectory)
@@ -3863,9 +3909,20 @@ sub git_footer_html {
 		      qq!startBlame("!. href(action=>"blame_data", -replay=>1) .qq!",\n!.
 		      qq!           "!. href() .qq!");\n!.
 		      qq!</script>\n!;
-	} elsif (gitweb_check_feature('javascript-actions')) {
+	} else {
+		my ($jstimezone, $tz_cookie, $datetime_class) =
+			gitweb_get_feature('javascript-timezone');
+
 		print qq!<script type="text/javascript">\n!.
-		      qq!window.onload = fixLinks;\n!.
+		      qq!window.onload = function () {\n!;
+		if (gitweb_check_feature('javascript-actions')) {
+			print qq!	fixLinks();\n!;
+		}
+		if ($jstimezone && $tz_cookie && $datetime_class) {
+			print qq!	var tz_cookie = { name: '$tz_cookie', expires: 14, path: '/' };\n!. # in days
+			      qq!	onloadTZSetup('$jstimezone', tz_cookie, '$datetime_class');\n!;
+		}
+		print qq!};\n!.
 		      qq!</script>\n!;
 	}
 
@@ -4069,22 +4126,25 @@ sub git_print_section {
 	print $cgi->end_div;
 }
 
-sub print_local_time {
-	print format_local_time(@_);
-}
+sub format_timestamp_html {
+	my $date = shift;
+	my $strtime = $date->{'rfc2822'};
 
-sub format_local_time {
-	my $localtime = '';
-	my %date = @_;
-	if ($date{'hour_local'} < 6) {
-		$localtime .= sprintf(" (<span class=\"atnight\">%02d:%02d</span> %s)",
-			$date{'hour_local'}, $date{'minute_local'}, $date{'tz_local'});
-	} else {
-		$localtime .= sprintf(" (%02d:%02d %s)",
-			$date{'hour_local'}, $date{'minute_local'}, $date{'tz_local'});
+	my (undef, undef, $datetime_class) =
+		gitweb_get_feature('javascript-timezone');
+	if ($datetime_class) {
+		$strtime = qq!<span class="$datetime_class">$strtime</span>!;
 	}
 
-	return $localtime;
+	my $localtime_format = '(%02d:%02d %s)';
+	if ($date->{'hour_local'} < 6) {
+		$localtime_format = '(<span class="atnight">%02d:%02d</span> %s)';
+	}
+	$strtime .= ' ' .
+	            sprintf($localtime_format,
+	                    $date->{'hour_local'}, $date->{'minute_local'}, $date->{'tz_local'});
+
+	return $strtime;
 }
 
 # Outputs the author name and date in long form
@@ -4097,10 +4157,9 @@ sub git_print_authorship {
 	my %ad = parse_date($co->{'author_epoch'}, $co->{'author_tz'});
 	print "<$tag class=\"author_date\">" .
 	      format_search_author($author, "author", esc_html($author)) .
-	      " [$ad{'rfc2822'}";
-	print_local_time(%ad) if ($opts{-localtime});
-	print "]" . git_get_avatar($co->{'author_email'}, -pad_before => 1)
-		  . "</$tag>\n";
+	      " [".format_timestamp_html(\%ad)."]".
+	      git_get_avatar($co->{'author_email'}, -pad_before => 1) .
+	      "</$tag>\n";
 }
 
 # Outputs table rows containing the full author or committer information,
@@ -4117,16 +4176,16 @@ sub git_print_authorship_rows {
 		my %wd = parse_date($co->{"${who}_epoch"}, $co->{"${who}_tz"});
 		print "<tr><td>$who</td><td>" .
 		      format_search_author($co->{"${who}_name"}, $who,
-			       esc_html($co->{"${who}_name"})) . " " .
+		                           esc_html($co->{"${who}_name"})) . " " .
 		      format_search_author($co->{"${who}_email"}, $who,
-			       esc_html("<" . $co->{"${who}_email"} . ">")) .
+		                           esc_html("<" . $co->{"${who}_email"} . ">")) .
 		      "</td><td rowspan=\"2\">" .
 		      git_get_avatar($co->{"${who}_email"}, -size => 'double') .
 		      "</td></tr>\n" .
 		      "<tr>" .
-		      "<td></td><td> $wd{'rfc2822'}";
-		print_local_time(%wd);
-		print "</td>" .
+		      "<td></td><td>" .
+		      format_timestamp_html(\%wd) .
+		      "</td>" .
 		      "</tr>\n";
 	}
 }
@@ -4869,8 +4928,9 @@ sub git_patchset_body {
 
 # . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .
 
-# fills project list info (age, description, owner, forks) for each
-# project in the list, removing invalid projects from returned list
+# fills project list info (age, description, owner, category, forks)
+# for each project in the list, removing invalid projects from
+# returned list
 # NOTE: modifies $projlist, but does not remove entries from it
 sub fill_project_list_info {
 	my $projlist = shift;
@@ -4896,6 +4956,12 @@ sub fill_project_list_info {
 		if ($show_ctags) {
 			$pr->{'ctags'} = git_get_project_ctags($pr->{'path'});
 		}
+		if ($projects_list_group_categories && !defined $pr->{'category'}) {
+			my $cat = git_get_project_category($pr->{'path'}) ||
+			                                   $project_list_default_category;
+			$pr->{'category'} = to_utf8($cat);
+		}
+
 		push @projects, $pr;
 	}
 
@@ -4923,6 +4989,23 @@ sub sort_projects_list {
 	return @projects;
 }
 
+# returns a hash of categories, containing the list of project
+# belonging to each category
+sub build_projlist_by_category {
+	my ($projlist, $from, $to) = @_;
+	my %categories;
+
+	$from = 0 unless defined $from;
+	$to = $#$projlist if (!defined $to || $#$projlist < $to);
+
+	for (my $i = $from; $i <= $to; $i++) {
+		my $pr = $projlist->[$i];
+		push @{$categories{ $pr->{'category'} }}, $pr;
+	}
+
+	return wantarray ? %categories : \%categories;
+}
+
 # print 'sort by' <th> element, generating 'sort by $name' replay link
 # if that order is not selected
 sub print_sort_th {
@@ -4944,6 +5027,55 @@ sub format_sort_th {
 	}
 
 	return $sort_th;
+}
+
+sub git_project_list_rows {
+	my ($projlist, $from, $to, $check_forks) = @_;
+
+	$from = 0 unless defined $from;
+	$to = $#$projlist if (!defined $to || $#$projlist < $to);
+
+	my $alternate = 1;
+	for (my $i = $from; $i <= $to; $i++) {
+		my $pr = $projlist->[$i];
+
+		if ($alternate) {
+			print "<tr class=\"dark\">\n";
+		} else {
+			print "<tr class=\"light\">\n";
+		}
+		$alternate ^= 1;
+
+		if ($check_forks) {
+			print "<td>";
+			if ($pr->{'forks'}) {
+				my $nforks = scalar @{$pr->{'forks'}};
+				if ($nforks > 0) {
+					print $cgi->a({-href => href(project=>$pr->{'path'}, action=>"forks"),
+					               -title => "$nforks forks"}, "+");
+				} else {
+					print $cgi->span({-title => "$nforks forks"}, "+");
+				}
+			}
+			print "</td>\n";
+		}
+		print "<td>" . $cgi->a({-href => href(project=>$pr->{'path'}, action=>"summary"),
+		                        -class => "list"}, esc_html($pr->{'path'})) . "</td>\n" .
+		      "<td>" . $cgi->a({-href => href(project=>$pr->{'path'}, action=>"summary"),
+		                        -class => "list", -title => $pr->{'descr_long'}},
+		                        esc_html($pr->{'descr'})) . "</td>\n" .
+		      "<td><i>" . chop_and_escape_str($pr->{'owner'}, 15) . "</i></td>\n";
+		print "<td class=\"". age_class($pr->{'age'}) . "\">" .
+		      (defined $pr->{'age_string'} ? $pr->{'age_string'} : "No commits") . "</td>\n" .
+		      "<td class=\"link\">" .
+		      $cgi->a({-href => href(project=>$pr->{'path'}, action=>"summary")}, "summary")   . " | " .
+		      $cgi->a({-href => href(project=>$pr->{'path'}, action=>"shortlog")}, "shortlog") . " | " .
+		      $cgi->a({-href => href(project=>$pr->{'path'}, action=>"log")}, "log") . " | " .
+		      $cgi->a({-href => href(project=>$pr->{'path'}, action=>"tree")}, "tree") .
+		      ($pr->{'forks'} ? " | " . $cgi->a({-href => href(project=>$pr->{'path'}, action=>"forks")}, "forks") : '') .
+		      "</td>\n" .
+		      "</tr>\n";
+	}
 }
 
 sub git_project_list_body {
@@ -5001,47 +5133,27 @@ sub git_project_list_body {
 		print "<th></th>\n" . # for links
 		      "</tr>\n";
 	}
-	my $alternate = 1;
-	for (my $i = $from; $i <= $to; $i++) {
-		my $pr = $projects[$i];
 
-		if ($alternate) {
-			print "<tr class=\"dark\">\n";
-		} else {
-			print "<tr class=\"light\">\n";
-		}
-		$alternate ^= 1;
-
-		if ($check_forks) {
-			print "<td>";
-			if ($pr->{'forks'}) {
-				my $nforks = scalar @{$pr->{'forks'}};
-				if ($nforks > 0) {
-					print $cgi->a({-href => href(project=>$pr->{'path'}, action=>"forks"),
-					               -title => "$nforks forks"}, "+");
-				} else {
-					print $cgi->span({-title => "$nforks forks"}, "+");
+	if ($projects_list_group_categories) {
+		# only display categories with projects in the $from-$to window
+		@projects = sort {$a->{'category'} cmp $b->{'category'}} @projects[$from..$to];
+		my %categories = build_projlist_by_category(\@projects, $from, $to);
+		foreach my $cat (sort keys %categories) {
+			unless ($cat eq "") {
+				print "<tr>\n";
+				if ($check_forks) {
+					print "<td></td>\n";
 				}
+				print "<td class=\"category\" colspan=\"5\">".esc_html($cat)."</td>\n";
+				print "</tr>\n";
 			}
-			print "</td>\n";
+
+			git_project_list_rows($categories{$cat}, undef, undef, $check_forks);
 		}
-		print "<td>" . $cgi->a({-href => href(project=>$pr->{'path'}, action=>"summary"),
-		                        -class => "list"}, esc_html($pr->{'path'})) . "</td>\n" .
-		      "<td>" . $cgi->a({-href => href(project=>$pr->{'path'}, action=>"summary"),
-		                        -class => "list", -title => $pr->{'descr_long'}},
-		                        esc_html($pr->{'descr'})) . "</td>\n" .
-		      "<td><i>" . chop_and_escape_str($pr->{'owner'}, 15) . "</i></td>\n";
-		print "<td class=\"". age_class($pr->{'age'}) . "\">" .
-		      (defined $pr->{'age_string'} ? $pr->{'age_string'} : "No commits") . "</td>\n" .
-		      "<td class=\"link\">" .
-		      $cgi->a({-href => href(project=>$pr->{'path'}, action=>"summary")}, "summary")   . " | " .
-		      $cgi->a({-href => href(project=>$pr->{'path'}, action=>"shortlog")}, "shortlog") . " | " .
-		      $cgi->a({-href => href(project=>$pr->{'path'}, action=>"log")}, "log") . " | " .
-		      $cgi->a({-href => href(project=>$pr->{'path'}, action=>"tree")}, "tree") .
-		      ($pr->{'forks'} ? " | " . $cgi->a({-href => href(project=>$pr->{'path'}, action=>"forks")}, "forks") : '') .
-		      "</td>\n" .
-		      "</tr>\n";
+	} else {
+		git_project_list_rows(\@projects, $from, $to, $check_forks);
 	}
+
 	if (defined $extra) {
 		print "<tr>\n";
 		if ($check_forks) {
@@ -5561,7 +5673,8 @@ sub git_summary {
 	      "<tr id=\"metadata_desc\"><td>description</td><td>" . esc_html($descr) . "</td></tr>\n" .
 	      "<tr id=\"metadata_owner\"><td>owner</td><td>" . esc_html($owner) . "</td></tr>\n";
 	if (defined $cd{'rfc2822'}) {
-		print "<tr id=\"metadata_lchange\"><td>last change</td><td>$cd{'rfc2822'}</td></tr>\n";
+		print "<tr id=\"metadata_lchange\"><td>last change</td>" .
+		      "<td>".format_timestamp_html(\%cd)."</td></tr>\n";
 	}
 
 	# use per project git URL list in $projectroot/$project/cloneurl

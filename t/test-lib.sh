@@ -731,12 +731,11 @@ test_expect_code () {
 	exit_code=$?
 	if test $exit_code = $want_code
 	then
-		echo >&2 "test_expect_code: command exited with $exit_code: $*"
 		return 0
-	else
-		echo >&2 "test_expect_code: command exited with $exit_code, we wanted $want_code $*"
-		return 1
 	fi
+
+	echo >&2 "test_expect_code: command exited with $exit_code, we wanted $want_code $*"
+	return 1
 }
 
 # test_cmp is a helper function to compare actual and expected output.
@@ -1072,6 +1071,7 @@ esac
 
 test -z "$NO_PERL" && test_set_prereq PERL
 test -z "$NO_PYTHON" && test_set_prereq PYTHON
+test -n "$USE_LIBPCRE" && test_set_prereq LIBPCRE
 
 # Can we rely on git's output in the C locale?
 if test -n "$GETTEXT_POISON"

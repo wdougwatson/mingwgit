@@ -47,8 +47,14 @@ static void read_rr(struct string_list *rr)
 		name = xstrdup(buf);
 		if (fgetc(in) != '\t')
 			die("corrupt MERGE_RR");
-		for (i = 0; i < sizeof(buf) && (buf[i] = fgetc(in)); i++)
-			; /* do nothing */
+		for (i = 0; i < sizeof(buf); i++) {
+			int c = fgetc(in);
+			if (c < 0)
+				die("corrupt MERGE_RR");
+			buf[i] = c;
+			if (c == 0)
+				 break;
+		}
 		if (i == sizeof(buf))
 			die("filename too long");
 		string_list_insert(rr, buf)->util = name;
@@ -739,6 +745,7 @@ void rerere_gc(struct string_list *rr)
 		if (then < now - cutoff * 86400)
 			string_list_append(&to_remove, e->d_name);
 	}
+	closedir(dir);
 	for (i = 0; i < to_remove.nr; i++)
 		unlink_rr_item(to_remove.items[i].string);
 	string_list_clear(&to_remove, 0);
