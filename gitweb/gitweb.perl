@@ -2644,7 +2644,7 @@ sub git_get_project_ctags {
 			close $ct;
 
 			(my $ctag = $tagfile) =~ s#.*/##;
-			if ($val =~ /\d+/) {
+			if ($val =~ /^\d+$/) {
 				$ctags->{$ctag} = $val;
 			} else {
 				$ctags->{$ctag} = 1;
@@ -6127,7 +6127,7 @@ sub git_blob_plain {
 	# want to be sure not to break that by serving the image as an
 	# attachment (though Firefox 3 doesn't seem to care).
 	my $sandbox = $prevent_xss &&
-		$type !~ m!^(?:text/plain|image/(?:gif|png|jpeg))$!;
+		$type !~ m!^(?:text/plain|image/(?:gif|png|jpeg))(?:[ ;]|$)!;
 
 	print $cgi->header(
 		-type => $type,
