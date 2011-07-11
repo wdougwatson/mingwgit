@@ -81,7 +81,7 @@ test_expect_success 'test basic "submodule foreach" usage' '
 		git config foo.bar zar &&
 		git submodule foreach "git config --file \"\$toplevel/.git/config\" foo.bar"
 	) &&
-	test_cmp expect actual
+	test_i18ncmp expect actual
 '
 
 test_expect_success 'setup nested submodules' '
@@ -162,7 +162,7 @@ test_expect_success 'test messages from "foreach --recursive"' '
 		cd clone2 &&
 		git submodule foreach --recursive "true" > ../actual
 	) &&
-	test_cmp expect actual
+	test_i18ncmp expect actual
 '
 
 cat > expect <<EOF

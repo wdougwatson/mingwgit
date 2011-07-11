@@ -657,24 +657,25 @@ static void suggest_reattach(struct commit *commit, struct rev_info *revs)
 		"Warning: you are leaving %d commit behind, "
 		"not connected to\n"
 		"any of your branches:\n\n"
-		"%s\n"
-		"If you want to keep it by creating a new branch, "
-		"this may be a good time\nto do so with:\n\n"
-		" git branch new_branch_name %s\n\n",
+		"%s\n",
 		/* The plural version */
 		"Warning: you are leaving %d commits behind, "
 		"not connected to\n"
 		"any of your branches:\n\n"
-		"%s\n"
-		"If you want to keep them by creating a new branch, "
-		"this may be a good time\nto do so with:\n\n"
-		" git branch new_branch_name %s\n\n",
+		"%s\n",
 		/* Give ngettext() the count */
 		lost),
 		lost,
-		sb.buf,
-		sha1_to_hex(commit->object.sha1));
+		sb.buf);
 	strbuf_release(&sb);
+
+	if (advice_detached_head)
+		fprintf(stderr,
+			_(
+			"If you want to keep them by creating a new branch, "
+			"this may be a good time\nto do so with:\n\n"
+			" git branch new_branch_name %s\n\n"),
+			sha1_to_hex(commit->object.sha1));
 }
 
 /*
@@ -1071,7 +1072,7 @@ int cmd_checkout(int argc, const char **argv, const char *prefix)
 		if (strbuf_check_branch_ref(&buf, opts.new_branch))
 			die(_("git checkout: we do not like '%s' as a branch name."),
 			    opts.new_branch);
-		if (!get_sha1(buf.buf, rev)) {
+		if (ref_exists(buf.buf)) {
 			opts.branch_exists = 1;
 			if (!opts.new_branch_force)
 				die(_("git checkout: branch %s already exists"),
