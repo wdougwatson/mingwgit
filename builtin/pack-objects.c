@@ -70,6 +70,7 @@ static int local;
 static int incremental;
 static int ignore_packed_keep;
 static int allow_ofs_delta;
+static struct pack_idx_option pack_idx_opts;
 static const char *base_name;
 static int progress = 1;
 static int window = 10;
@@ -126,13 +127,13 @@ static void *get_delta(struct object_entry *entry)
 
 static unsigned long do_compress(void **pptr, unsigned long size)
 {
-	z_stream stream;
+	git_zstream stream;
 	void *in, *out;
 	unsigned long maxsize;
 
 	memset(&stream, 0, sizeof(stream));
-	deflateInit(&stream, pack_compression_level);
-	maxsize = deflateBound(&stream, size);
+	git_deflate_init(&stream, pack_compression_level);
+	maxsize = git_deflate_bound(&stream, size);
 
 	in = *pptr;
 	out = xmalloc(maxsize);
@@ -142,9 +143,9 @@ static unsigned long do_compress(void **pptr, unsigned long size)
 	stream.avail_in = size;
 	stream.next_out = out;
 	stream.avail_out = maxsize;
-	while (deflate(&stream, Z_FINISH) == Z_OK)
+	while (git_deflate(&stream, Z_FINISH) == Z_OK)
 		; /* nothing */
-	deflateEnd(&stream);
+	git_deflate_end(&stream);
 
 	free(in);
 	return stream.total_out;
@@ -160,7 +161,7 @@ static int check_pack_inflate(struct packed_git *p,
 		off_t len,
 		unsigned long expect)
 {
-	z_stream stream;
+	git_zstream stream;
 	unsigned char fakebuf[4096], *in;
 	int st;
 
@@ -187,12 +188,12 @@ static void copy_pack_data(struct sha1file *f,
 		off_t len)
 {
 	unsigned char *in;
-	unsigned int avail;
+	unsigned long avail;
 
 	while (len) {
 		in = use_pack(p, w_curs, offset, &avail);
 		if (avail > len)
-			avail = (unsigned int)len;
+			avail = (unsigned long)len;
 		sha1write(f, in, avail);
 		offset += avail;
 		len -= avail;
@@ -493,8 +494,8 @@ static void write_pack_file(void)
 			const char *idx_tmp_name;
 			char tmpname[PATH_MAX];
 
-			idx_tmp_name = write_idx_file(NULL, written_list,
-						      nr_written, sha1);
+			idx_tmp_name = write_idx_file(NULL, written_list, nr_written,
+						      &pack_idx_opts, sha1);
 
 			snprintf(tmpname, sizeof(tmpname), "%s-%s.pack",
 				 base_name, sha1_to_hex(sha1));
@@ -994,7 +995,7 @@ static void check_object(struct object_entry *entry)
 		const unsigned char *base_ref = NULL;
 		struct object_entry *base_entry;
 		unsigned long used, used_0;
-		unsigned int avail;
+		unsigned long avail;
 		off_t ofs;
 		unsigned char *buf, c;
 
@@ -1884,10 +1885,10 @@ static int git_pack_config(const char *k, const char *v, void *cb)
 		return 0;
 	}
 	if (!strcmp(k, "pack.indexversion")) {
-		pack_idx_default_version = git_config_int(k, v);
-		if (pack_idx_default_version > 2)
+		pack_idx_opts.version = git_config_int(k, v);
+		if (pack_idx_opts.version > 2)
 			die("bad pack.indexversion=%"PRIu32,
-				pack_idx_default_version);
+			    pack_idx_opts.version);
 		return 0;
 	}
 	if (!strcmp(k, "pack.packsizelimit")) {
@@ -2134,6 +2135,7 @@ int cmd_pack_objects(int argc, const char **argv, const char *prefix)
 	rp_av[1] = "--objects"; /* --thin will make it --objects-edge */
 	rp_ac = 2;
 
+	reset_pack_idx_option(&pack_idx_opts);
 	git_config(git_pack_config, NULL);
 	if (!pack_compression_seen && core_compression_seen)
 		pack_compression_level = core_compression_level;
@@ -2278,12 +2280,12 @@ int cmd_pack_objects(int argc, const char **argv, const char *prefix)
 		}
 		if (!prefixcmp(arg, "--index-version=")) {
 			char *c;
-			pack_idx_default_version = strtoul(arg + 16, &c, 10);
-			if (pack_idx_default_version > 2)
+			pack_idx_opts.version = strtoul(arg + 16, &c, 10);
+			if (pack_idx_opts.version > 2)
 				die("bad %s", arg);
 			if (*c == ',')
-				pack_idx_off32_limit = strtoul(c+1, &c, 0);
-			if (*c || pack_idx_off32_limit & 0x80000000)
+				pack_idx_opts.off32_limit = strtoul(c+1, &c, 0);
+			if (*c || pack_idx_opts.off32_limit & 0x80000000)
 				die("bad %s", arg);
 			continue;
 		}

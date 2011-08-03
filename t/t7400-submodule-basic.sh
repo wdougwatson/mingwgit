@@ -47,8 +47,10 @@ test_expect_success 'setup - repository to add submodules to' '
 '
 
 # The 'submodule add' tests need some repository to add as a submodule.
-# The trash directory is a good one as any.
-submodurl=$TRASH_DIRECTORY
+# The trash directory is a good one as any. We need to canonicalize
+# the name, though, as some tests compare it to the absolute path git
+# generates, which will expand symbolic links.
+submodurl=$(pwd -P)
 
 listbranches() {
 	git for-each-ref --format='%(refname)' 'refs/heads/*'
@@ -443,6 +445,16 @@ test_expect_success 'add should fail when path is used by an existing directory'
 		cd addtest &&
 		mkdir empty-dir &&
 		test_must_fail git submodule add "$submodurl/repo" empty-dir
+	)
+'
+
+test_expect_success 'use superproject as upstream when path is relative and no url is set there' '
+	(
+		cd addtest &&
+		git submodule add ../repo relative &&
+		test "$(git config -f .gitmodules submodule.relative.url)" = ../repo &&
+		git submodule sync relative &&
+		test "$(git config submodule.relative.url)" = "$submodurl/repo"
 	)
 '
 

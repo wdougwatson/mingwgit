@@ -66,7 +66,7 @@ struct filtered_istream {
 struct git_istream {
 	const struct stream_vtbl *vtbl;
 	unsigned long size; /* inflated size of full object */
-	z_stream z;
+	git_zstream z;
 	enum { z_unused, z_used, z_done, z_error } z_state;
 
 	union {
@@ -94,7 +94,9 @@ struct git_istream {
 
 int close_istream(struct git_istream *st)
 {
-	return st->vtbl->close(st);
+	int r = st->vtbl->close(st);
+	free(st);
+	return r;
 }
 
 ssize_t read_istream(struct git_istream *st, char *buf, size_t sz)

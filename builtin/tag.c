@@ -12,11 +12,13 @@
 #include "tag.h"
 #include "run-command.h"
 #include "parse-options.h"
+#include "diff.h"
+#include "revision.h"
 
 static const char * const git_tag_usage[] = {
 	"git tag [-a|-s|-u <key-id>] [-f] [-m <msg>|-F <file>] <tagname> [<head>]",
 	"git tag -d <tagname>...",
-	"git tag -l [-n[<num>]] [<pattern>]",
+	"git tag -l [-n[<num>]] [<pattern>...]",
 	"git tag -v <tagname>...",
 	NULL
 };
@@ -24,17 +26,70 @@ static const char * const git_tag_usage[] = {
 static char signingkey[1000];
 
 struct tag_filter {
-	const char *pattern;
+	const char **patterns;
 	int lines;
 	struct commit_list *with_commit;
 };
+
+static int match_pattern(const char **patterns, const char *ref)
+{
+	/* no pattern means match everything */
+	if (!*patterns)
+		return 1;
+	for (; *patterns; patterns++)
+		if (!fnmatch(*patterns, ref, 0))
+			return 1;
+	return 0;
+}
+
+static int in_commit_list(const struct commit_list *want, struct commit *c)
+{
+	for (; want; want = want->next)
+		if (!hashcmp(want->item->object.sha1, c->object.sha1))
+			return 1;
+	return 0;
+}
+
+static int contains_recurse(struct commit *candidate,
+			    const struct commit_list *want)
+{
+	struct commit_list *p;
+
+	/* was it previously marked as containing a want commit? */
+	if (candidate->object.flags & TMP_MARK)
+		return 1;
+	/* or marked as not possibly containing a want commit? */
+	if (candidate->object.flags & UNINTERESTING)
+		return 0;
+	/* or are we it? */
+	if (in_commit_list(want, candidate))
+		return 1;
+
+	if (parse_commit(candidate) < 0)
+		return 0;
+
+	/* Otherwise recurse and mark ourselves for future traversals. */
+	for (p = candidate->parents; p; p = p->next) {
+		if (contains_recurse(p->item, want)) {
+			candidate->object.flags |= TMP_MARK;
+			return 1;
+		}
+	}
+	candidate->object.flags |= UNINTERESTING;
+	return 0;
+}
+
+static int contains(struct commit *candidate, const struct commit_list *want)
+{
+	return contains_recurse(candidate, want);
+}
 
 static int show_reference(const char *refname, const unsigned char *sha1,
 			  int flag, void *cb_data)
 {
 	struct tag_filter *filter = cb_data;
 
-	if (!fnmatch(filter->pattern, refname, 0)) {
+	if (match_pattern(filter->patterns, refname)) {
 		int i;
 		unsigned long size;
 		enum object_type type;
@@ -47,7 +102,7 @@ static int show_reference(const char *refname, const unsigned char *sha1,
 			commit = lookup_commit_reference_gently(sha1, 1);
 			if (!commit)
 				return 0;
-			if (!is_descendant_of(commit, filter->with_commit))
+			if (!contains(commit, filter->with_commit))
 				return 0;
 		}
 
@@ -88,15 +143,12 @@ static int show_reference(const char *refname, const unsigned char *sha1,
 	return 0;
 }
 
-static int list_tags(const char *pattern, int lines,
+static int list_tags(const char **patterns, int lines,
 			struct commit_list *with_commit)
 {
 	struct tag_filter filter;
 
-	if (pattern == NULL)
-		pattern = "*";
-
-	filter.pattern = pattern;
+	filter.patterns = patterns;
 	filter.lines = lines;
 	filter.with_commit = with_commit;
 
@@ -425,7 +477,7 @@ int cmd_tag(int argc, const char **argv, const char *prefix)
 	if (list + delete + verify > 1)
 		usage_with_options(git_tag_usage, options);
 	if (list)
-		return list_tags(argv[0], lines == -1 ? 0 : lines,
+		return list_tags(argv, lines == -1 ? 0 : lines,
 				 with_commit);
 	if (lines != -1)
 		die(_("-n option is only allowed with -l."));
