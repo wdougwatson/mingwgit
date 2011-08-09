@@ -665,13 +665,25 @@ sub read_config_file {
 	return;
 }
 
-our ($GITWEB_CONFIG, $GITWEB_CONFIG_SYSTEM);
+our ($GITWEB_CONFIG, $GITWEB_CONFIG_SYSTEM, $GITWEB_CONFIG_COMMON);
 sub evaluate_gitweb_config {
 	our $GITWEB_CONFIG = $ENV{'GITWEB_CONFIG'} || "++GITWEB_CONFIG++";
 	our $GITWEB_CONFIG_SYSTEM = $ENV{'GITWEB_CONFIG_SYSTEM'} || "++GITWEB_CONFIG_SYSTEM++";
+	our $GITWEB_CONFIG_COMMON = $ENV{'GITWEB_CONFIG_COMMON'} || "++GITWEB_CONFIG_COMMON++";
 
-	# use first config file that exists
-	read_config_file($GITWEB_CONFIG) or
+	# Protect agains duplications of file names, to not read config twice.
+	# Only one of $GITWEB_CONFIG and $GITWEB_CONFIG_SYSTEM is used, so
+	# there possibility of duplication of filename there doesn't matter.
+	$GITWEB_CONFIG = ""        if ($GITWEB_CONFIG eq $GITWEB_CONFIG_COMMON);
+	$GITWEB_CONFIG_SYSTEM = "" if ($GITWEB_CONFIG_SYSTEM eq $GITWEB_CONFIG_COMMON);
+
+	# Common system-wide settings for convenience.
+	# Those settings can be ovverriden by GITWEB_CONFIG or GITWEB_CONFIG_SYSTEM.
+	read_config_file($GITWEB_CONFIG_COMMON);
+
+	# Use first config file that exists.  This means use the per-instance
+	# GITWEB_CONFIG if exists, otherwise use GITWEB_SYSTEM_CONFIG.
+	read_config_file($GITWEB_CONFIG) and return;
 	read_config_file($GITWEB_CONFIG_SYSTEM);
 }
 
@@ -2514,6 +2526,13 @@ sub git_get_project_config {
 
 	# key sanity check
 	return unless ($key);
+	# only subsection, if exists, is case sensitive,
+	# and not lowercased by 'git config -z -l'
+	if (my ($hi, $mi, $lo) = ($key =~ /^([^.]*)\.(.*)\.([^.]*)$/)) {
+		$key = join(".", lc($hi), $mi, lc($lo));
+	} else {
+		$key = lc($key);
+	}
 	$key =~ s/^gitweb\.//;
 	return if ($key =~ m/\W/);
 
@@ -6465,7 +6484,7 @@ sub git_blob {
 			$nr++;
 			$line = untabify($line);
 			printf qq!<div class="pre"><a id="l%i" href="%s#l%i" class="linenr">%4i</a> %s</div>\n!,
-			       $nr, esc_attr(href(-replay => 1)), $nr, $nr, $syntax ? $line : esc_html($line, -nbsp=>1);
+			       $nr, esc_attr(href(-replay => 1)), $nr, $nr, $syntax ? to_utf8($line) : esc_html($line, -nbsp=>1);
 		}
 	}
 	close $fd
