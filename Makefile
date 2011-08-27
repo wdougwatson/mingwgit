@@ -30,15 +30,15 @@ all::
 # Define LIBPCREDIR=/foo/bar if your libpcre header and library files are in
 # /foo/bar/include and /foo/bar/lib directories.
 #
-# Define NO_CURL if you do not have libcurl installed.  git-http-pull and
+# Define NO_CURL if you do not have libcurl installed.  git-http-fetch and
 # git-http-push are not built, and you cannot use http:// and https://
-# transports.
+# transports (neither smart nor dumb).
 #
 # Define CURLDIR=/foo/bar if your curl header and library files are in
 # /foo/bar/include and /foo/bar/lib directories.
 #
 # Define NO_EXPAT if you do not have expat installed.  git-http-push is
-# not built, and you cannot push using http:// and https:// transports.
+# not built, and you cannot push using http:// and https:// transports (dumb).
 #
 # Define EXPATDIR=/foo/bar if your expat header and library files are in
 # /foo/bar/include and /foo/bar/lib directories.
@@ -302,6 +302,7 @@ bindir = $(prefix)/$(bindir_relative)
 mandir = share/man
 infodir = share/info
 gitexecdir = libexec/git-core
+mergetoolsdir = $(gitexecdir)/mergetools
 sharedir = $(prefix)/share
 gitwebdir = $(sharedir)/gitweb
 template_dir = share/git-core/templates
@@ -642,6 +643,7 @@ LIB_OBJS += pack-revindex.o
 LIB_OBJS += pack-write.o
 LIB_OBJS += pager.o
 LIB_OBJS += parse-options.o
+LIB_OBJS += parse-options-cb.o
 LIB_OBJS += patch-delta.o
 LIB_OBJS += patch-ids.o
 LIB_OBJS += path.o
@@ -1876,7 +1878,7 @@ ifndef NO_CURL
 	GIT_OBJS += http.o http-walker.o remote-curl.o
 endif
 XDIFF_OBJS = xdiff/xdiffi.o xdiff/xprepare.o xdiff/xutils.o xdiff/xemit.o \
-	xdiff/xmerge.o xdiff/xpatience.o
+	xdiff/xmerge.o xdiff/xpatience.o xdiff/xhistogram.o
 VCSSVN_OBJS = vcs-svn/string_pool.o vcs-svn/line_buffer.o \
 	vcs-svn/repo_tree.o vcs-svn/fast_export.o vcs-svn/svndump.o
 VCSSVN_TEST_OBJS = test-obj-pool.o test-string-pool.o \
@@ -2204,7 +2206,7 @@ test-delta$X: diff-delta.o patch-delta.o
 
 test-line-buffer$X: vcs-svn/lib.a
 
-test-parse-options$X: parse-options.o
+test-parse-options$X: parse-options.o parse-options-cb.o
 
 test-string-pool$X: vcs-svn/lib.a
 
@@ -2257,6 +2259,13 @@ endif
 gitexec_instdir_SQ = $(subst ','\'',$(gitexec_instdir))
 export gitexec_instdir
 
+ifneq ($(filter /%,$(firstword $(mergetoolsdir))),)
+mergetools_instdir = $(mergetoolsdir)
+else
+mergetools_instdir = $(prefix)/$(mergetoolsdir)
+endif
+mergetools_instdir_SQ = $(subst ','\'',$(mergetools_instdir))
+
 install_bindir_programs := $(patsubst %,%$X,$(BINDIR_PROGRAMS_NEED_X)) $(BINDIR_PROGRAMS_NO_X)
 
 install: all
@@ -2266,6 +2275,9 @@ install: all
 	$(INSTALL) -m 644 $(SCRIPT_LIB) '$(DESTDIR_SQ)$(gitexec_instdir_SQ)'
 	$(INSTALL) $(install_bindir_programs) '$(DESTDIR_SQ)$(bindir_SQ)'
 	$(MAKE) -C templates DESTDIR='$(DESTDIR_SQ)' install
+	$(INSTALL) -d -m 755 '$(DESTDIR_SQ)$(mergetools_instdir_SQ)'
+	(cd mergetools && $(TAR) cf - .) | \
+	(cd '$(DESTDIR_SQ)$(mergetools_instdir_SQ)' && umask 022 && $(TAR) xof -)
 ifndef NO_PERL
 	$(MAKE) -C perl prefix='$(prefix_SQ)' DESTDIR='$(DESTDIR_SQ)' install
 	$(MAKE) -C gitweb install

@@ -1601,12 +1601,10 @@ int merge_recursive(struct merge_options *o,
 
 	merged_common_ancestors = pop_commit(&ca);
 	if (merged_common_ancestors == NULL) {
-		/* if there is no common ancestor, make an empty tree */
-		struct tree *tree = xcalloc(1, sizeof(struct tree));
+		/* if there is no common ancestor, use an empty tree */
+		struct tree *tree;
 
-		tree->object.parsed = 1;
-		tree->object.type = OBJ_TREE;
-		pretend_sha1_file(NULL, 0, OBJ_TREE, tree->object.sha1);
+		tree = lookup_tree((const unsigned char *)EMPTY_TREE_SHA1_BIN);
 		merged_common_ancestors = make_virtual_commit(tree, "ancestor");
 	}
 
@@ -1759,6 +1757,8 @@ int parse_merge_opt(struct merge_options *o, const char *s)
 		o->subtree_shift = s + strlen("subtree=");
 	else if (!strcmp(s, "patience"))
 		o->xdl_opts |= XDF_PATIENCE_DIFF;
+	else if (!strcmp(s, "histogram"))
+		o->xdl_opts |= XDF_HISTOGRAM_DIFF;
 	else if (!strcmp(s, "ignore-space-change"))
 		o->xdl_opts |= XDF_IGNORE_WHITESPACE_CHANGE;
 	else if (!strcmp(s, "ignore-all-space"))

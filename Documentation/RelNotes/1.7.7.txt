@@ -6,25 +6,61 @@ Updates since v1.7.6
 
  * The scripting part of the codebase is getting prepared for i18n/l10n.
 
- * Interix and Cygwin ports got updated.
+ * Interix, Cygwin and Minix ports got updated.
+
+ * A handful of patches to update git-p4 (in contrib/).
+
+ * Gitweb learned to read from /etc/gitweb-common.conf when it exists,
+   before reading from gitweb_config.perl or from /etc/gitweb.conf
+   (this last one is read only when per-repository gitweb_config.perl
+   does not exist).
 
  * Various codepaths that invoked zlib deflate/inflate assumed that these
    functions can compress or uncompress more than 4GB data in one call on
    platforms with 64-bit long, which has been corrected.
 
+ * Git now recognizes loose objects written by other implementations that
+   uses non-standard window size for zlib deflation (e.g. Agit running on
+   Android with 4kb window). We used to reject anything that was not
+   deflated with 32kb window.
+
+ * "git am" learned to pass "--exclude=<path>" option through to underlying
+   "git apply".
+
+ * You can now feed many empty lines before feeding a mbox file to
+   "git am".
+
  * "git archive" can be told to pass the output to gzip compression and
    produce "archive.tar.gz".
+
+ * "git bisect" can be used in a bare repository (provided if the test
+   you perform per each iteration does not need a working tree, of
+   course).
+
+ * "git check-attr" can take relative paths from the command line.
+
+ * "git check-attr" learned "--all" option to list the attributes for a
+   given path.
 
  * "git checkout" (both the code to update the files upon checking out a
    different branch, the code to checkout specific set of files) learned
    to stream the data from object store when possible, without having to
-   read the entire contents of a file in memory first.
+   read the entire contents of a file in memory first. An earlier round
+   of this code that is not in any released version had a large leak but
+   now it has been plugged.
 
  * "git clone" can now take "--config key=value" option to set the
    repository configuration options that affect the initial checkout.
 
+ * "git commit <paths>..." now lets you feed relative pathspecs that
+   refer outside your current subdirectory.
+
  * "git diff --stat" learned --stat-count option to limit the output of
    diffstat report.
+
+ * "git diff" learned "--histogram" option, to use a different diff
+   generation machinery stolen from jgit, which might give better
+   performance.
 
  * "git fetch", "git push" and friends no longer show connection
    errors for addresses that couldn't be connected when at least one
@@ -34,6 +70,9 @@ Updates since v1.7.6
  * "git grep" learned --break and --heading options, to let users mimic
    output format of "ack".
 
+ * "git grep" learned "-W" option that shows wider context using the same
+   logic used by "git diff" to determine the hunk header.
+
  * "git rebase master topci" no longer spews usage hints after giving
    "fatal: no such branch: topci" error message.
 
@@ -42,6 +81,11 @@ Updates since v1.7.6
  * "git submodule update" used to stop at the first error updating a
    submodule; it now goes on to update other submodules that can be
    updated, and reports the ones with errors at the end.
+
+ * "git upload-pack" and "git receive-pack" learned to pretend only a
+   subset of the refs exist in a repository. This may help a site to
+   put many tiny repositories into one repository (this would not be
+   useful for larger repositories as repacking would be problematic).
 
  * "git verify-pack" has been rewritten to use the "index-pack" machinery
    that is more efficient in reading objects in packfiles.
@@ -59,40 +103,21 @@ Fixes since v1.7.6
 Unless otherwise noted, all the fixes in 1.7.6.X maintenance track are
 included in this release.
 
- * "git checkout -b <branch>" sometimes wrote a bogus reflog entry,
-   causing later "git checkout -" fail.
-   (merge 71ee7fd jc/checkout-reflog-fix~1 later).
+ * "git branch --set-upstream @{-1} foo" did not expand @{-1} correctly.
+   (merge e9d4f74 mg/branch-set-upstream-previous later to 'maint').
 
- * "git diff --cc" learned to correctly ignore binary files.
-   (merge 0508fe5 jk/combine-diff-binary-etc later)
+ * "git describe --dirty" did not refresh the index before checking the
+   state of the working tree files.
+   (cherry-pick bb57148 ac/describe-dirty-refresh later to 'maint').
 
- * "git fetch" did not recurse into submodules in subdirectories.
-   (merge ea2d325 jl/maint-fetch-recursive-fix later)
-
- * "git rebase -i -p" incorrectly dropped commits from side branches.
-   (merge 12bf828 aw/rebase-i-p later)
-
- * "git submodule add" did not allow a relative repository path when
-   the superproject did not have any default remote url.
-   (merge f22a17e8 jl/submodule-add-relurl-wo-upstream later)
-
- * "git submodule foreach" failed to correctly give the standard input to
-   the user-supplied command it invoked.
-   (merge 4dca1aa bc/submodule-foreach-stdin-fix-1.7.4 later)
-
- * submodules that the user has never showed interest in by running
-   "git submodule init" was incorrectly marked as interesting by "git
-   submodule sync".
-   (merge 2cd9de3 jc/submodule-sync-no-auto-vivify later)
-
- * "git tag -l <glob>..." did not take multiple glob patterns from the
-   command line.
-   (merge 588d0e8 jk/tag-list-multiple-patterns later)
+ * "git ls-files ../$path" that is run from a subdirectory reported errors
+   incorrectly when there is no such path that matches the given pathspec.
+   (merge 0f64bfa cb/maint-ls-files-error-report later to 'maint').
 
 --
 exec >/var/tmp/1
 echo O=$(git describe master)
-O=v1.7.6-344-g22f4128
+O=v1.7.6.1-415-g284daf2
 git log --first-parent --oneline $O..master
 echo
 git shortlog --no-merges ^maint ^$O master

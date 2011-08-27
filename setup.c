@@ -40,34 +40,6 @@ char *prefix_path(const char *prefix, int len, const char *path)
 	return sanitized;
 }
 
-/*
- * Unlike prefix_path, this should be used if the named file does
- * not have to interact with index entry; i.e. name of a random file
- * on the filesystem.
- */
-const char *prefix_filename(const char *pfx, int pfx_len, const char *arg)
-{
-	static char path[PATH_MAX];
-#ifndef WIN32
-	if (!pfx_len || is_absolute_path(arg))
-		return arg;
-	memcpy(path, pfx, pfx_len);
-	strcpy(path + pfx_len, arg);
-#else
-	char *p;
-	/* don't add prefix to absolute paths, but still replace '\' by '/' */
-	if (is_absolute_path(arg))
-		pfx_len = 0;
-	else if (pfx_len)
-		memcpy(path, pfx, pfx_len);
-	strcpy(path + pfx_len, arg);
-	for (p = path + pfx_len; *p; p++)
-		if (*p == '\\')
-			*p = '/';
-#endif
-	return path;
-}
-
 int check_filename(const char *prefix, const char *arg)
 {
 	const char *name;
@@ -262,6 +234,38 @@ const char **get_pathspec(const char *prefix, const char **pathspec)
 	if (!*pathspec)
 		return NULL;
 	return pathspec;
+}
+
+const char *pathspec_prefix(const char *prefix, const char **pathspec)
+{
+	const char **p, *n, *prev;
+	unsigned long max;
+
+	if (!pathspec)
+		return prefix ? xmemdupz(prefix, strlen(prefix)) : NULL;
+
+	prev = NULL;
+	max = PATH_MAX;
+	for (p = pathspec; (n = *p) != NULL; p++) {
+		int i, len = 0;
+		for (i = 0; i < max; i++) {
+			char c = n[i];
+			if (prev && prev[i] != c)
+				break;
+			if (!c || c == '*' || c == '?')
+				break;
+			if (c == '/')
+				len = i+1;
+		}
+		prev = n;
+		if (len < max) {
+			max = len;
+			if (!max)
+				break;
+		}
+	}
+
+	return max ? xmemdupz(prev, max) : NULL;
 }
 
 /*

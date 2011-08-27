@@ -92,6 +92,10 @@ _x40="$_x05$_x05$_x05$_x05$_x05$_x05$_x05$_x05"
 # Zero SHA-1
 _z40=0000000000000000000000000000000000000000
 
+# Line feed
+LF='
+'
+
 # Each test should start with something like this, after copyright notices:
 #
 # test_description='Description of this test...
@@ -444,20 +448,26 @@ test_debug () {
 	test "$debug" = "" || eval "$1"
 }
 
+test_eval_ () {
+	# This is a separate function because some tests use
+	# "return" to end a test_expect_success block early.
+	eval >&3 2>&4 "$*"
+}
+
 test_run_ () {
 	test_cleanup=:
 	expecting_failure=$2
-	eval >&3 2>&4 "$1"
+	test_eval_ "$1"
 	eval_ret=$?
 
 	if test -z "$immediate" || test $eval_ret = 0 || test -n "$expecting_failure"
 	then
-		eval >&3 2>&4 "$test_cleanup"
+		test_eval_ "$test_cleanup"
 	fi
 	if test "$verbose" = "t" && test -n "$HARNESS_ACTIVE"; then
 		echo ""
 	fi
-	return 0
+	return "$eval_ret"
 }
 
 test_skip () {
@@ -502,8 +512,7 @@ test_expect_failure () {
 	if ! test_skip "$@"
 	then
 		say >&3 "checking known breakage: $2"
-		test_run_ "$2" expecting_failure
-		if [ "$?" = 0 -a "$eval_ret" = 0 ]
+		if test_run_ "$2" expecting_failure
 		then
 			test_known_broken_ok_ "$1"
 		else
@@ -521,8 +530,7 @@ test_expect_success () {
 	if ! test_skip "$@"
 	then
 		say >&3 "expecting success: $2"
-		test_run_ "$2"
-		if [ "$?" = 0 -a "$eval_ret" = 0 ]
+		if test_run_ "$2"
 		then
 			test_ok_ "$1"
 		else
