@@ -295,7 +295,7 @@ split_patches () {
 			perl -ne 'BEGIN { $subject = 0 }
 				if ($subject > 1) { print ; }
 				elsif (/^\s+$/) { next ; }
-				elsif (/^Author:/) { print s/Author/From/ ; }
+				elsif (/^Author:/) { s/Author/From/ ; print ;}
 				elsif (/^(From|Date)/) { print ; }
 				elsif ($subject) {
 					$subject = 2 ;
@@ -312,7 +312,8 @@ split_patches () {
 		msgnum=
 		;;
 	*)
-		if test -n "$parse_patch" ; then
+		if test -n "$patch_format"
+		then
 			clean_abort "$(eval_gettext "Patch format \$patch_format is not supported.")"
 		else
 			clean_abort "$(gettext "Patch format detection failed.")"

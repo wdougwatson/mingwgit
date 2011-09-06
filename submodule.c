@@ -32,7 +32,7 @@ static int add_submodule_odb(const char *path)
 	const char *git_dir;
 
 	strbuf_addf(&objects_directory, "%s/.git", path);
-	git_dir = read_gitfile_gently(objects_directory.buf);
+	git_dir = read_gitfile(objects_directory.buf);
 	if (git_dir) {
 		strbuf_reset(&objects_directory);
 		strbuf_addstr(&objects_directory, git_dir);
@@ -308,6 +308,114 @@ void set_config_fetch_recurse_submodules(int value)
 	config_fetch_recurse_submodules = value;
 }
 
+static int has_remote(const char *refname, const unsigned char *sha1, int flags, void *cb_data)
+{
+	return 1;
+}
+
+static int submodule_needs_pushing(const char *path, const unsigned char sha1[20])
+{
+	if (add_submodule_odb(path) || !lookup_commit_reference(sha1))
+		return 0;
+
+	if (for_each_remote_ref_submodule(path, has_remote, NULL) > 0) {
+		struct child_process cp;
+		const char *argv[] = {"rev-list", NULL, "--not", "--remotes", "-n", "1" , NULL};
+		struct strbuf buf = STRBUF_INIT;
+		int needs_pushing = 0;
+
+		argv[1] = sha1_to_hex(sha1);
+		memset(&cp, 0, sizeof(cp));
+		cp.argv = argv;
+		cp.env = local_repo_env;
+		cp.git_cmd = 1;
+		cp.no_stdin = 1;
+		cp.out = -1;
+		cp.dir = path;
+		if (start_command(&cp))
+			die("Could not run 'git rev-list %s --not --remotes -n 1' command in submodule %s",
+				sha1_to_hex(sha1), path);
+		if (strbuf_read(&buf, cp.out, 41))
+			needs_pushing = 1;
+		finish_command(&cp);
+		close(cp.out);
+		strbuf_release(&buf);
+		return needs_pushing;
+	}
+
+	return 0;
+}
+
+static void collect_submodules_from_diff(struct diff_queue_struct *q,
+					 struct diff_options *options,
+					 void *data)
+{
+	int i;
+	int *needs_pushing = data;
+
+	for (i = 0; i < q->nr; i++) {
+		struct diff_filepair *p = q->queue[i];
+		if (!S_ISGITLINK(p->two->mode))
+			continue;
+		if (submodule_needs_pushing(p->two->path, p->two->sha1)) {
+			*needs_pushing = 1;
+			break;
+		}
+	}
+}
+
+
+static void commit_need_pushing(struct commit *commit, struct commit_list *parent, int *needs_pushing)
+{
+	const unsigned char (*parents)[20];
+	unsigned int i, n;
+	struct rev_info rev;
+
+	n = commit_list_count(parent);
+	parents = xmalloc(n * sizeof(*parents));
+
+	for (i = 0; i < n; i++) {
+		hashcpy((unsigned char *)(parents + i), parent->item->object.sha1);
+		parent = parent->next;
+	}
+
+	init_revisions(&rev, NULL);
+	rev.diffopt.output_format |= DIFF_FORMAT_CALLBACK;
+	rev.diffopt.format_callback = collect_submodules_from_diff;
+	rev.diffopt.format_callback_data = needs_pushing;
+	diff_tree_combined(commit->object.sha1, parents, n, 1, &rev);
+
+	free(parents);
+}
+
+int check_submodule_needs_pushing(unsigned char new_sha1[20], const char *remotes_name)
+{
+	struct rev_info rev;
+	struct commit *commit;
+	const char *argv[] = {NULL, NULL, "--not", "NULL", NULL};
+	int argc = ARRAY_SIZE(argv) - 1;
+	char *sha1_copy;
+	int needs_pushing = 0;
+	struct strbuf remotes_arg = STRBUF_INIT;
+
+	strbuf_addf(&remotes_arg, "--remotes=%s", remotes_name);
+	init_revisions(&rev, NULL);
+	sha1_copy = xstrdup(sha1_to_hex(new_sha1));
+	argv[1] = sha1_copy;
+	argv[3] = remotes_arg.buf;
+	setup_revisions(argc, argv, &rev, NULL);
+	if (prepare_revision_walk(&rev))
+		die("revision walk setup failed");
+
+	while ((commit = get_revision(&rev)) && !needs_pushing)
+		commit_need_pushing(commit, commit->parents, &needs_pushing);
+
+	free(sha1_copy);
+	strbuf_release(&remotes_arg);
+
+	return needs_pushing;
+}
+
 static int is_submodule_commit_present(const char *path, unsigned char sha1[20])
 {
 	int is_present = 0;
@@ -479,7 +587,7 @@ int fetch_populated_submodules(int num_options, const char **options,
 		strbuf_addf(&submodule_path, "%s/%s", work_tree, ce->name);
 		strbuf_addf(&submodule_git_dir, "%s/.git", submodule_path.buf);
 		strbuf_addf(&submodule_prefix, "%s%s/", prefix, ce->name);
-		git_dir = read_gitfile_gently(submodule_git_dir.buf);
+		git_dir = read_gitfile(submodule_git_dir.buf);
 		if (!git_dir)
 			git_dir = submodule_git_dir.buf;
 		if (is_directory(git_dir)) {
@@ -517,7 +625,7 @@ unsigned is_submodule_modified(const char *path, int ignore_untracked)
 	const char *git_dir;
 
 	strbuf_addf(&buf, "%s/.git", path);
-	git_dir = read_gitfile_gently(buf.buf);
+	git_dir = read_gitfile(buf.buf);
 	if (!git_dir)
 		git_dir = buf.buf;
 	if (!is_directory(git_dir)) {
