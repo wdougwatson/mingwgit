@@ -309,6 +309,18 @@ static void free_extended_entry(struct tree_desc_x *t)
 	}
 }
 
+static inline int prune_traversal(struct name_entry *e,
+				  struct traverse_info *info,
+				  struct strbuf *base,
+				  int still_interesting)
+{
+	if (!info->pathspec || still_interesting == 2)
+		return 2;
+	if (still_interesting < 0)
+		return still_interesting;
+	return tree_entry_interesting(e, base, 0, info->pathspec);
+}
+
 int traverse_trees(int n, struct tree_desc *t, struct traverse_info *info)
 {
 	int ret = 0;
@@ -316,15 +328,23 @@ int traverse_trees(int n, struct tree_desc *t, struct traverse_info *info)
 	struct name_entry *entry = xmalloc(n*sizeof(*entry));
 	int i;
 	struct tree_desc_x *tx = xcalloc(n, sizeof(*tx));
+	struct strbuf base = STRBUF_INIT;
+	int interesting = 1;
 
 	for (i = 0; i < n; i++)
 		tx[i].d = t[i];
 
+	if (info->prev) {
+		strbuf_grow(&base, info->pathlen);
+		make_traverse_path(base.buf, info->prev, &info->name);
+		base.buf[info->pathlen-1] = '/';
+		strbuf_setlen(&base, info->pathlen);
+	}
 	for (;;) {
 		unsigned long mask, dirmask;
 		const char *first = NULL;
 		int first_len = 0;
-		struct name_entry *e;
+		struct name_entry *e = NULL;
 		int len;
 
 		for (i = 0; i < n; i++) {
@@ -376,16 +396,22 @@ int traverse_trees(int n, struct tree_desc *t, struct traverse_info *info)
 			mask |= 1ul << i;
 			if (S_ISDIR(entry[i].mode))
 				dirmask |= 1ul << i;
+			e = &entry[i];
 		}
 		if (!mask)
 			break;
-		ret = info->fn(n, mask, dirmask, entry, info);
-		if (ret < 0) {
-			error = ret;
-			if (!info->show_all_errors)
-				break;
+		interesting = prune_traversal(e, info, &base, interesting);
+		if (interesting < 0)
+			break;
+		if (interesting) {
+			ret = info->fn(n, mask, dirmask, entry, info);
+			if (ret < 0) {
+				error = ret;
+				if (!info->show_all_errors)
+					break;
+			}
+			mask &= ret;
 		}
-		mask &= ret;
 		ret = 0;
 		for (i = 0; i < n; i++)
 			if (mask & (1ul << i))
@@ -395,6 +421,7 @@ int traverse_trees(int n, struct tree_desc *t, struct traverse_info *info)
 	for (i = 0; i < n; i++)
 		free_extended_entry(tx + i);
 	free(tx);
+	strbuf_release(&base);
 	return error;
 }
 
@@ -522,7 +549,7 @@ static int match_entry(const struct name_entry *entry, int pathlen,
 	return 0;
 }
 
-static int match_dir_prefix(const char *base, int baselen,
+static int match_dir_prefix(const char *base,
 			    const char *match, int matchlen)
 {
 	if (strncmp(base, match, matchlen))
@@ -579,7 +606,7 @@ int tree_entry_interesting(const struct name_entry *entry,
 
 		if (baselen >= matchlen) {
 			/* If it doesn't match, move along... */
-			if (!match_dir_prefix(base_str, baselen, match, matchlen))
+			if (!match_dir_prefix(base_str, match, matchlen))
 				goto match_wildcards;
 
 			if (!ps->recursive || ps->max_depth == -1)
@@ -591,8 +618,8 @@ int tree_entry_interesting(const struct name_entry *entry,
 					      ps->max_depth);
 		}
 
-		/* Does the base match? */
-		if (!strncmp(base_str, match, baselen)) {
+		/* Either there must be no base, or the base must match. */
+		if (baselen == 0 || !strncmp(base_str, match, baselen)) {
 			if (match_entry(entry, pathlen,
 					match + baselen, matchlen - baselen,
 					&never_interesting))

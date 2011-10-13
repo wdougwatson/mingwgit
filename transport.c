@@ -432,7 +432,8 @@ static int fetch_refs_from_bundle(struct transport *transport,
 			       int nr_heads, struct ref **to_fetch)
 {
 	struct bundle_transport_data *data = transport->data;
-	return unbundle(&data->header, data->fd);
+	return unbundle(&data->header, data->fd,
+			transport->progress ? BUNDLE_VERBOSE : 0);
 }
 
 static int close_bundle(struct transport *transport)
@@ -754,18 +755,10 @@ void transport_verify_remote_names(int nr_heads, const char **heads)
 			continue;
 
 		remote = remote ? (remote + 1) : local;
-		switch (check_ref_format(remote)) {
-		case 0: /* ok */
-		case CHECK_REF_FORMAT_ONELEVEL:
-			/* ok but a single level -- that is fine for
-			 * a match pattern.
-			 */
-		case CHECK_REF_FORMAT_WILDCARD:
-			/* ok but ends with a pattern-match character */
-			continue;
-		}
-		die("remote part of refspec is not a valid name in %s",
-		    heads[i]);
+		if (check_refname_format(remote,
+				REFNAME_ALLOW_ONELEVEL|REFNAME_REFSPEC_PATTERN))
+			die("remote part of refspec is not a valid name in %s",
+				heads[i]);
 	}
 }
 

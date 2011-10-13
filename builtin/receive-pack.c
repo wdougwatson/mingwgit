@@ -11,6 +11,7 @@
 #include "transport.h"
 #include "string-list.h"
 #include "sha1-array.h"
+#include "connected.h"
 
 static const char receive_pack_usage[] = "git receive-pack <git-dir>";
 
@@ -25,7 +26,8 @@ static int deny_deletes;
 static int deny_non_fast_forwards;
 static enum deny_action deny_current_branch = DENY_UNCONFIGURED;
 static enum deny_action deny_delete_current = DENY_UNCONFIGURED;
-static int receive_fsck_objects;
+static int receive_fsck_objects = -1;
+static int transfer_fsck_objects = -1;
 static int receive_unpack_limit = -1;
 static int transfer_unpack_limit = -1;
 static int unpack_limit = 100;
@@ -76,6 +78,11 @@ static int receive_pack_config(const char *var, const char *value, void *cb)
 
 	if (strcmp(var, "receive.fsckobjects") == 0) {
 		receive_fsck_objects = git_config_bool(var, value);
+		return 0;
+	}
+
+	if (strcmp(var, "transfer.fsckobjects") == 0) {
+		transfer_fsck_objects = git_config_bool(var, value);
 		return 0;
 	}
 
@@ -205,21 +212,15 @@ static int copy_to_sideband(int in, int out, void *arg)
 	return 0;
 }
 
-static int run_receive_hook(struct command *commands, const char *hook_name)
+typedef int (*feed_fn)(void *, const char **, size_t *);
+static int run_and_feed_hook(const char *hook_name, feed_fn feed, void *feed_state)
 {
-	static char buf[sizeof(commands->old_sha1) * 2 + PATH_MAX + 4];
-	struct command *cmd;
 	struct child_process proc;
 	struct async muxer;
 	const char *argv[2];
-	int have_input = 0, code;
+	int code;
 
-	for (cmd = commands; !have_input && cmd; cmd = cmd->next) {
-		if (!cmd->error_string)
-			have_input = 1;
-	}
-
-	if (!have_input || access(hook_name, X_OK) < 0)
+	if (access(hook_name, X_OK) < 0)
 		return 0;
 
 	argv[0] = hook_name;
@@ -247,20 +248,59 @@ static int run_receive_hook(struct command *commands, const char *hook_name)
 		return code;
 	}
 
-	for (cmd = commands; cmd; cmd = cmd->next) {
-		if (!cmd->error_string) {
-			size_t n = snprintf(buf, sizeof(buf), "%s %s %s\n",
-				sha1_to_hex(cmd->old_sha1),
-				sha1_to_hex(cmd->new_sha1),
-				cmd->ref_name);
-			if (write_in_full(proc.in, buf, n) != n)
-				break;
-		}
+	while (1) {
+		const char *buf;
+		size_t n;
+		if (feed(feed_state, &buf, &n))
+			break;
+		if (write_in_full(proc.in, buf, n) != n)
+			break;
 	}
 	close(proc.in);
 	if (use_sideband)
 		finish_async(&muxer);
 	return finish_command(&proc);
+}
+
+struct receive_hook_feed_state {
+	struct command *cmd;
+	struct strbuf buf;
+};
+
+static int feed_receive_hook(void *state_, const char **bufp, size_t *sizep)
+{
+	struct receive_hook_feed_state *state = state_;
+	struct command *cmd = state->cmd;
+
+	while (cmd && cmd->error_string)
+		cmd = cmd->next;
+	if (!cmd)
+		return -1; /* EOF */
+	strbuf_reset(&state->buf);
+	strbuf_addf(&state->buf, "%s %s %s\n",
+		    sha1_to_hex(cmd->old_sha1), sha1_to_hex(cmd->new_sha1),
+		    cmd->ref_name);
+	state->cmd = cmd->next;
+	if (bufp) {
+		*bufp = state->buf.buf;
+		*sizep = state->buf.len;
+	}
+	return 0;
+}
+
+static int run_receive_hook(struct command *commands, const char *hook_name)
+{
+	struct receive_hook_feed_state state;
+	int status;
+
+	strbuf_init(&state.buf, 0);
+	state.cmd = commands;
+	if (feed_receive_hook(&state, NULL, NULL))
+		return 0;
+	state.cmd = commands;
+	status = run_and_feed_hook(hook_name, feed_receive_hook, &state);
+	strbuf_release(&state.buf);
+	return status;
 }
 
 static int run_update_hook(struct command *cmd)
@@ -356,7 +396,7 @@ static const char *update(struct command *cmd)
 	struct ref_lock *lock;
 
 	/* only refs/... are allowed */
-	if (prefixcmp(name, "refs/") || check_ref_format(name + 5)) {
+	if (prefixcmp(name, "refs/") || check_refname_format(name + 5, 0)) {
 		rp_error("refusing to create funny ref '%s' remotely", name);
 		return "funny refname";
 	}
@@ -579,6 +619,43 @@ static void check_aliased_updates(struct command *commands)
 	string_list_clear(&ref_list, 0);
 }
 
+static int command_singleton_iterator(void *cb_data, unsigned char sha1[20])
+{
+	struct command **cmd_list = cb_data;
+	struct command *cmd = *cmd_list;
+
+	if (!cmd)
+		return -1; /* end of list */
+	*cmd_list = NULL; /* this returns only one */
+	hashcpy(sha1, cmd->new_sha1);
+	return 0;
+}
+
+static void set_connectivity_errors(struct command *commands)
+{
+	struct command *cmd;
+
+	for (cmd = commands; cmd; cmd = cmd->next) {
+		struct command *singleton = cmd;
+		if (!check_everything_connected(command_singleton_iterator,
+						0, &singleton))
+			continue;
+		cmd->error_string = "missing necessary objects";
+	}
+}
+
+static int iterate_receive_command_list(void *cb_data, unsigned char sha1[20])
+{
+	struct command **cmd_list = cb_data;
+	struct command *cmd = *cmd_list;
+
+	if (!cmd)
+		return -1; /* end of list */
+	*cmd_list = cmd->next;
+	hashcpy(sha1, cmd->new_sha1);
+	return 0;
+}
+
 static void execute_commands(struct command *commands, const char *unpacker_error)
 {
 	struct command *cmd;
@@ -589,6 +666,11 @@ static void execute_commands(struct command *commands, const char *unpacker_erro
 			cmd->error_string = "n/a (unpacker error)";
 		return;
 	}
+
+	cmd = commands;
+	if (check_everything_connected(iterate_receive_command_list,
+				       0, &cmd))
+		set_connectivity_errors(commands);
 
 	if (run_receive_hook(commands, pre_receive_hook)) {
 		for (cmd = commands; cmd; cmd = cmd->next)
@@ -674,6 +756,11 @@ static const char *unpack(void)
 	struct pack_header hdr;
 	const char *hdr_err;
 	char hdr_arg[38];
+	int fsck_objects = (receive_fsck_objects >= 0
+			    ? receive_fsck_objects
+			    : transfer_fsck_objects >= 0
+			    ? transfer_fsck_objects
+			    : 0);
 
 	hdr_err = parse_pack_header(&hdr);
 	if (hdr_err)
@@ -686,7 +773,7 @@ static const char *unpack(void)
 		int code, i = 0;
 		const char *unpacker[4];
 		unpacker[i++] = "unpack-objects";
-		if (receive_fsck_objects)
+		if (fsck_objects)
 			unpacker[i++] = "--strict";
 		unpacker[i++] = hdr_arg;
 		unpacker[i++] = NULL;
@@ -706,7 +793,7 @@ static const char *unpack(void)
 
 		keeper[i++] = "index-pack";
 		keeper[i++] = "--stdin";
-		if (receive_fsck_objects)
+		if (fsck_objects)
 			keeper[i++] = "--strict";
 		keeper[i++] = "--fix-thin";
 		keeper[i++] = hdr_arg;

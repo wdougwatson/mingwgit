@@ -122,19 +122,19 @@ test_expect_success 'use "submodule foreach" to checkout 2nd level submodule' '
 	git clone super clone2 &&
 	(
 		cd clone2 &&
-		test ! -d sub1/.git &&
-		test ! -d sub2/.git &&
-		test ! -d sub3/.git &&
-		test ! -d nested1/.git &&
+		test_must_fail git rev-parse --resolve-git-dir sub1/.git &&
+		test_must_fail git rev-parse --resolve-git-dir sub2/.git &&
+		test_must_fail git rev-parse --resolve-git-dir sub3/.git &&
+		test_must_fail git rev-parse --resolve-git-dir nested1/.git &&
 		git submodule update --init &&
-		test -d sub1/.git &&
-		test -d sub2/.git &&
-		test -d sub3/.git &&
-		test -d nested1/.git &&
-		test ! -d nested1/nested2/.git &&
+		git rev-parse --resolve-git-dir sub1/.git &&
+		git rev-parse --resolve-git-dir sub2/.git &&
+		git rev-parse --resolve-git-dir sub3/.git &&
+		git rev-parse --resolve-git-dir nested1/.git &&
+		test_must_fail git rev-parse --resolve-git-dir nested1/nested2/.git &&
 		git submodule foreach "git submodule update --init" &&
-		test -d nested1/nested2/.git &&
-		test ! -d nested1/nested2/nested3/.git
+		git rev-parse --resolve-git-dir nested1/nested1/nested2/.git
+		test_must_fail git rev-parse --resolve-git-dir nested1/nested2/nested3/.git
 	)
 '
 
@@ -142,8 +142,8 @@ test_expect_success 'use "foreach --recursive" to checkout all submodules' '
 	(
 		cd clone2 &&
 		git submodule foreach --recursive "git submodule update --init" &&
-		test -d nested1/nested2/nested3/.git &&
-		test -d nested1/nested2/nested3/submodule/.git
+		git rev-parse --resolve-git-dir nested1/nested2/nested3/.git &&
+		git rev-parse --resolve-git-dir nested1/nested2/nested3/submodule/.git
 	)
 '
 
@@ -187,18 +187,18 @@ test_expect_success 'use "update --recursive" to checkout all submodules' '
 	git clone super clone3 &&
 	(
 		cd clone3 &&
-		test ! -d sub1/.git &&
-		test ! -d sub2/.git &&
-		test ! -d sub3/.git &&
-		test ! -d nested1/.git &&
+		test_must_fail git rev-parse --resolve-git-dir sub1/.git &&
+		test_must_fail git rev-parse --resolve-git-dir sub2/.git &&
+		test_must_fail git rev-parse --resolve-git-dir sub3/.git &&
+		test_must_fail git rev-parse --resolve-git-dir nested1/.git &&
 		git submodule update --init --recursive &&
-		test -d sub1/.git &&
-		test -d sub2/.git &&
-		test -d sub3/.git &&
-		test -d nested1/.git &&
-		test -d nested1/nested2/.git &&
-		test -d nested1/nested2/nested3/.git &&
-		test -d nested1/nested2/nested3/submodule/.git
+		git rev-parse --resolve-git-dir sub1/.git &&
+		git rev-parse --resolve-git-dir sub2/.git &&
+		git rev-parse --resolve-git-dir sub3/.git &&
+		git rev-parse --resolve-git-dir nested1/.git &&
+		git rev-parse --resolve-git-dir nested1/nested2/.git &&
+		git rev-parse --resolve-git-dir nested1/nested2/nested3/.git &&
+		git rev-parse --resolve-git-dir nested1/nested2/nested3/submodule/.git
 	)
 '
 
@@ -251,14 +251,17 @@ test_expect_success 'ensure "status --cached --recursive" preserves the --cached
 
 test_expect_success 'use "git clone --recursive" to checkout all submodules' '
 	git clone --recursive super clone4 &&
-	test -d clone4/.git &&
-	test -d clone4/sub1/.git &&
-	test -d clone4/sub2/.git &&
-	test -d clone4/sub3/.git &&
-	test -d clone4/nested1/.git &&
-	test -d clone4/nested1/nested2/.git &&
-	test -d clone4/nested1/nested2/nested3/.git &&
-	test -d clone4/nested1/nested2/nested3/submodule/.git
+	(
+		cd clone4 &&
+		git rev-parse --resolve-git-dir .git &&
+		git rev-parse --resolve-git-dir sub1/.git &&
+		git rev-parse --resolve-git-dir sub2/.git &&
+		git rev-parse --resolve-git-dir sub3/.git &&
+		git rev-parse --resolve-git-dir nested1/.git &&
+		git rev-parse --resolve-git-dir nested1/nested2/.git &&
+		git rev-parse --resolve-git-dir nested1/nested2/nested3/.git &&
+		git rev-parse --resolve-git-dir nested1/nested2/nested3/submodule/.git
+	)
 '
 
 test_expect_success 'test "update --recursive" with a flag with spaces' '
@@ -266,14 +269,14 @@ test_expect_success 'test "update --recursive" with a flag with spaces' '
 	git clone super clone5 &&
 	(
 		cd clone5 &&
-		test ! -d nested1/.git &&
+		test_must_fail git rev-parse --resolve-git-dir d nested1/.git &&
 		git submodule update --init --recursive --reference="$(dirname "$PWD")/common objects" &&
-		test -d nested1/.git &&
-		test -d nested1/nested2/.git &&
-		test -d nested1/nested2/nested3/.git &&
-		test -f nested1/.git/objects/info/alternates &&
-		test -f nested1/nested2/.git/objects/info/alternates &&
-		test -f nested1/nested2/nested3/.git/objects/info/alternates
+		git rev-parse --resolve-git-dir nested1/.git &&
+		git rev-parse --resolve-git-dir nested1/nested2/.git &&
+		git rev-parse --resolve-git-dir nested1/nested2/nested3/.git &&
+		test -f .git/modules/nested1/objects/info/alternates &&
+		test -f .git/modules/nested1/modules/nested2/objects/info/alternates &&
+		test -f .git/modules/nested1/modules/nested2/modules/nested3/objects/info/alternates
 	)
 '
 
@@ -281,18 +284,18 @@ test_expect_success 'use "update --recursive nested1" to checkout all submodules
 	git clone super clone6 &&
 	(
 		cd clone6 &&
-		test ! -d sub1/.git &&
-		test ! -d sub2/.git &&
-		test ! -d sub3/.git &&
-		test ! -d nested1/.git &&
+		test_must_fail git rev-parse --resolve-git-dir sub1/.git &&
+		test_must_fail git rev-parse --resolve-git-dir sub2/.git &&
+		test_must_fail git rev-parse --resolve-git-dir sub3/.git &&
+		test_must_fail git rev-parse --resolve-git-dir nested1/.git &&
 		git submodule update --init --recursive -- nested1 &&
-		test ! -d sub1/.git &&
-		test ! -d sub2/.git &&
-		test ! -d sub3/.git &&
-		test -d nested1/.git &&
-		test -d nested1/nested2/.git &&
-		test -d nested1/nested2/nested3/.git &&
-		test -d nested1/nested2/nested3/submodule/.git
+		test_must_fail git rev-parse --resolve-git-dir sub1/.git &&
+		test_must_fail git rev-parse --resolve-git-dir sub2/.git &&
+		test_must_fail git rev-parse --resolve-git-dir sub3/.git &&
+		git rev-parse --resolve-git-dir nested1/.git &&
+		git rev-parse --resolve-git-dir nested1/nested2/.git &&
+		git rev-parse --resolve-git-dir nested1/nested2/nested3/.git &&
+		git rev-parse --resolve-git-dir nested1/nested2/nested3/submodule/.git
 	)
 '
 

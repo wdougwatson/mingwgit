@@ -289,7 +289,7 @@ static void show_new_file(struct rev_info *revs,
 
 	/*
 	 * New file in the index: it might actually be different in
-	 * the working copy.
+	 * the working tree.
 	 */
 	if (get_stat_data(new, &sha1, &mode, cached, match_missing,
 	    &dirty_submodule, &revs->diffopt) < 0)
@@ -468,6 +468,7 @@ static int diff_cache(struct rev_info *revs,
 	opts.unpack_data = revs;
 	opts.src_index = &the_index;
 	opts.dst_index = NULL;
+	opts.pathspec = &revs->diffopt.pathspec;
 
 	init_tree_desc(&t, tree->buffer, tree->size);
 	return unpack_trees(1, &t, &opts);
