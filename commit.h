@@ -38,6 +38,13 @@ struct commit *lookup_commit_reference_gently(const unsigned char *sha1,
 					      int quiet);
 struct commit *lookup_commit_reference_by_name(const char *name);
 
+/*
+ * Look up object named by "sha1", dereference tag as necessary,
+ * get a commit and return it. If "sha1" does not dereference to
+ * a commit, use ref_name to report an error and die.
+ */
+struct commit *lookup_commit_or_die(const unsigned char *sha1, const char *ref_name);
+
 int parse_commit_buffer(struct commit *item, const void *buffer, unsigned long size);
 int parse_commit(struct commit *item);
 
@@ -126,6 +133,7 @@ struct commit *pop_most_recent_commit(struct commit_list **list,
 struct commit *pop_commit(struct commit_list **stack);
 
 void clear_commit_marks(struct commit *commit, unsigned int mark);
+void clear_commit_marks_for_object_array(struct object_array *a, unsigned mark);
 
 /*
  * Performs an in-place topological sort of list supplied.

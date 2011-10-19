@@ -168,6 +168,7 @@ struct cache_entry {
 	unsigned int ce_flags;
 	unsigned char sha1[20];
 	struct cache_entry *next;
+	struct cache_entry *dir_next;
 	char name[FLEX_ARRAY]; /* more */
 };
 
@@ -589,6 +590,7 @@ extern int warn_ambiguous_refs;
 extern int shared_repository;
 extern const char *apply_default_whitespace;
 extern const char *apply_default_ignorewhitespace;
+extern const char *git_attributes_file;
 extern int zlib_compression_level;
 extern int core_compression_level;
 extern int core_compression_seen;

@@ -39,6 +39,18 @@ struct commit *lookup_commit_reference(const unsigned char *sha1)
 	return lookup_commit_reference_gently(sha1, 0);
 }
 
+struct commit *lookup_commit_or_die(const unsigned char *sha1, const char *ref_name)
+{
+	struct commit *c = lookup_commit_reference(sha1);
+	if (!c)
+		die(_("could not parse %s"), ref_name);
+	if (hashcmp(sha1, c->object.sha1)) {
+		warning(_("%s %s is not a commit!"),
+			ref_name, sha1_to_hex(sha1));
+	}
+	return c;
+}
+
 struct commit *lookup_commit(const unsigned char *sha1)
 {
 	struct object *obj = lookup_object(sha1);
@@ -427,6 +439,20 @@ void clear_commit_marks(struct commit *commit, unsigned int mark)
 			clear_commit_marks(parents->item, mark);
 
 		commit = commit->parents->item;
+	}
+}
+
+void clear_commit_marks_for_object_array(struct object_array *a, unsigned mark)
+{
+	struct object *object;
+	struct commit *commit;
+	unsigned int i;
+
+	for (i = 0; i < a->nr; i++) {
+		object = a->objects[i].item;
+		commit = lookup_commit_reference_gently(object->sha1, 1);
+		if (commit)
+			clear_commit_marks(commit, mark);
 	}
 }
 

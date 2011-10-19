@@ -1606,10 +1606,10 @@ static void fetch_symref(const char *path, char **symref, unsigned char *sha1)
 	strbuf_release(&buffer);
 }
 
-static int verify_merge_base(unsigned char *head_sha1, unsigned char *branch_sha1)
+static int verify_merge_base(unsigned char *head_sha1, struct ref *remote)
 {
-	struct commit *head = lookup_commit(head_sha1);
-	struct commit *branch = lookup_commit(branch_sha1);
+	struct commit *head = lookup_commit_or_die(head_sha1, "HEAD");
+	struct commit *branch = lookup_commit_or_die(remote->old_sha1, remote->name);
 	struct commit_list *merge_bases = get_merge_bases(head, branch, 1);
 
 	return (merge_bases && !merge_bases->next && merge_bases->item == branch);
@@ -1680,7 +1680,7 @@ static int delete_remote_branch(const char *pattern, int force)
 			return error("Remote branch %s resolves to object %s\nwhich does not exist locally, perhaps you need to fetch?", remote_ref->name, sha1_to_hex(remote_ref->old_sha1));
 
 		/* Remote branch must be an ancestor of remote HEAD */
-		if (!verify_merge_base(head_sha1, remote_ref->old_sha1)) {
+		if (!verify_merge_base(head_sha1, remote_ref)) {
 			return error("The branch '%s' is not an ancestor "
 				     "of your current HEAD.\n"
 				     "If you are sure you want to delete it,"
@@ -1747,7 +1747,6 @@ int main(int argc, char **argv)
 	int i;
 	int new_refs;
 	struct ref *ref, *local_refs;
-	struct remote *remote;
 
 	git_extract_argv0_path(argv[0]);
 
@@ -1821,14 +1820,7 @@ int main(int argc, char **argv)
 
 	memset(remote_dir_exists, -1, 256);
 
-	/*
-	 * Create a minimum remote by hand to give to http_init(),
-	 * primarily to allow it to look at the URL.
-	 */
-	remote = xcalloc(sizeof(*remote), 1);
-	ALLOC_GROW(remote->url, remote->url_nr + 1, remote->url_alloc);
-	remote->url[remote->url_nr++] = repo->url;
-	http_init(remote);
+	http_init(NULL, repo->url);
 
 #ifdef USE_CURL_MULTI
 	is_running_queue = 0;

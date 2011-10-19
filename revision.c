@@ -226,6 +226,13 @@ static struct object *get_reference(struct rev_info *revs, const char *name, con
 	return object;
 }
 
+void add_pending_sha1(struct rev_info *revs, const char *name,
+		      const unsigned char *sha1, unsigned int flags)
+{
+	struct object *object = get_reference(revs, name, sha1, flags);
+	add_pending_object(revs, object, name);
+}
+
 static struct commit *handle_commit(struct rev_info *revs, struct object *object, const char *name)
 {
 	unsigned long flags = object->flags;
@@ -897,7 +904,7 @@ static int handle_one_ref(const char *path, const unsigned char *sha1, int flag,
 	struct object *object = get_reference(cb->all_revs, path, sha1,
 					      cb->all_flags);
 	add_rev_cmdline(cb->all_revs, object, path, REV_CMD_REF, cb->all_flags);
-	add_pending_object(cb->all_revs, object, path);
+	add_pending_sha1(cb->all_revs, path, sha1, cb->all_flags);
 	return 0;
 }
 
@@ -1052,10 +1059,12 @@ static void prepare_show_merge(struct rev_info *revs)
 	const char **prune = NULL;
 	int i, prune_num = 1; /* counting terminating NULL */
 
-	if (get_sha1("HEAD", sha1) || !(head = lookup_commit(sha1)))
+	if (get_sha1("HEAD", sha1))
 		die("--merge without HEAD?");
-	if (get_sha1("MERGE_HEAD", sha1) || !(other = lookup_commit(sha1)))
+	head = lookup_commit_or_die(sha1, "HEAD");
+	if (get_sha1("MERGE_HEAD", sha1))
 		die("--merge without MERGE_HEAD?");
+	other = lookup_commit_or_die(sha1, "MERGE_HEAD");
 	add_pending_object(revs, &head->object, "HEAD");
 	add_pending_object(revs, &other->object, "MERGE_HEAD");
 	bases = get_merge_bases(head, other, 1);
@@ -2048,7 +2057,8 @@ int prepare_revision_walk(struct rev_info *revs)
 		}
 		e++;
 	}
-	free(list);
+	if (!revs->leak_pending)
+		free(list);
 
 	if (revs->no_walk)
 		return 0;

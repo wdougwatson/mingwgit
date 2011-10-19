@@ -72,7 +72,7 @@ static int update_some(const unsigned char *sha1, const char *base, int baselen,
 	hashcpy(ce->sha1, sha1);
 	memcpy(ce->name, base, baselen);
 	memcpy(ce->name + baselen, pathname, len - baselen);
-	ce->ce_flags = create_ce_flags(len, 0);
+	ce->ce_flags = create_ce_flags(len, 0) | CE_UPDATE;
 	ce->ce_mode = create_ce_mode(mode);
 	add_cache_entry(ce, ADD_CACHE_OK_TO_ADD | ADD_CACHE_OK_TO_REPLACE);
 	return 0;
@@ -229,6 +229,8 @@ static int checkout_paths(struct tree *source_tree, const char **pathspec,
 
 	for (pos = 0; pos < active_nr; pos++) {
 		struct cache_entry *ce = active_cache[pos];
+		if (source_tree && !(ce->ce_flags & CE_UPDATE))
+			continue;
 		match_pathspec(pathspec, ce->name, ce_namelen(ce), 0, ps_matched);
 	}
 
@@ -267,6 +269,8 @@ static int checkout_paths(struct tree *source_tree, const char **pathspec,
 	state.refresh_cache = 1;
 	for (pos = 0; pos < active_nr; pos++) {
 		struct cache_entry *ce = active_cache[pos];
+		if (source_tree && !(ce->ce_flags & CE_UPDATE))
+			continue;
 		if (match_pathspec(pathspec, ce->name, ce_namelen(ce), 0, NULL)) {
 			if (!ce_stage(ce)) {
 				errs |= checkout_entry(ce, &state, NULL);
@@ -589,23 +593,11 @@ static void update_refs_for_switch(struct checkout_opts *opts,
 		report_tracking(new);
 }
 
-static int add_one_ref_to_rev_list_arg(const char *refname,
-				       const unsigned char *sha1,
-				       int flags,
-				       void *cb_data)
+static int add_pending_uninteresting_ref(const char *refname,
+					 const unsigned char *sha1,
+					 int flags, void *cb_data)
 {
-	argv_array_push(cb_data, refname);
-	return 0;
-}
-
-static int clear_commit_marks_from_one_ref(const char *refname,
-				      const unsigned char *sha1,
-				      int flags,
-				      void *cb_data)
-{
-	struct commit *commit = lookup_commit_reference_gently(sha1, 1);
-	if (commit)
-		clear_commit_marks(commit, -1);
+	add_pending_sha1(cb_data, refname, sha1, flags | UNINTERESTING);
 	return 0;
 }
 
@@ -674,18 +666,21 @@ static void suggest_reattach(struct commit *commit, struct rev_info *revs)
  */
 static void orphaned_commit_warning(struct commit *commit)
 {
-	struct argv_array args = ARGV_ARRAY_INIT;
 	struct rev_info revs;
-
-	argv_array_push(&args, "(internal)");
-	argv_array_push(&args, sha1_to_hex(commit->object.sha1));
-	argv_array_push(&args, "--not");
-	for_each_ref(add_one_ref_to_rev_list_arg, &args);
-	argv_array_push(&args, "--");
+	struct object *object = &commit->object;
+	struct object_array refs;
 
 	init_revisions(&revs, NULL);
-	if (setup_revisions(args.argc - 1, args.argv, &revs, NULL) != 1)
-		die(_("internal error: only -- alone should have been left"));
+	setup_revisions(0, NULL, &revs, NULL);
+
+	object->flags &= ~UNINTERESTING;
+	add_pending_object(&revs, object, sha1_to_hex(object->sha1));
+
+	for_each_ref(add_pending_uninteresting_ref, &revs);
+
+	refs = revs.pending;
+	revs.leak_pending = 1;
+
 	if (prepare_revision_walk(&revs))
 		die(_("internal error in revision walk"));
 	if (!(commit->object.flags & UNINTERESTING))
@@ -693,9 +688,8 @@ static void orphaned_commit_warning(struct commit *commit)
 	else
 		describe_detached_head(_("Previous HEAD position was"), commit);
 
-	argv_array_clear(&args);
-	clear_commit_marks(commit, -1);
-	for_each_ref(clear_commit_marks_from_one_ref, NULL);
+	clear_commit_marks_for_object_array(&refs, ALL_REV_FLAGS);
+	free(refs.objects);
 }
 
 static int switch_branches(struct checkout_opts *opts, struct branch_info *new)
