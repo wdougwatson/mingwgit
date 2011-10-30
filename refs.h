@@ -10,8 +10,9 @@ struct ref_lock {
 	int force_write;
 };
 
-#define REF_ISSYMREF 01
-#define REF_ISPACKED 02
+#define REF_ISSYMREF 0x01
+#define REF_ISPACKED 0x02
+#define REF_ISBROKEN 0x04
 
 /*
  * Calls the specified function for each ref file until it returns nonzero,
@@ -79,6 +80,14 @@ extern void unlock_ref(struct ref_lock *lock);
 
 /** Writes sha1 into the ref specified by the lock. **/
 extern int write_ref_sha1(struct ref_lock *lock, const unsigned char *sha1, const char *msg);
+
+/*
+ * Invalidate the reference cache for the specified submodule.  Use
+ * submodule=NULL to invalidate the cache for the main module.  This
+ * function must be called if references are changed via a mechanism
+ * other than the refs API.
+ */
+extern void invalidate_ref_cache(const char *submodule);
 
 /** Setup reflog before using. **/
 int log_ref_setup(const char *ref_name, char *logfile, int bufsize);

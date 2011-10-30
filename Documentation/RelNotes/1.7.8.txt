@@ -4,7 +4,7 @@ Git v1.7.8 Release Notes (draft)
 Updates since v1.7.7
 --------------------
 
- * Some git-svn and git-gui updates.
+ * Some git-svn, git-gui, git-p4 (in contrib) and msysgit updates.
 
  * Updates to bash completion scripts.
 
@@ -13,10 +13,6 @@ Updates since v1.7.7
 
  * The date parser now accepts timezone designators that lack minutes
    part and also has a colon between "hh:mm".
-
- * On some BSD systems, adding +s bit on directories is detrimental
-   (it is not necessary on BSD to begin with). The installation
-   procedure has been updated to take this into account.
 
  * The contents of the /etc/mailname file, if exists, is used as the
    default value of the hostname part of the committer/author e-mail.
@@ -35,10 +31,19 @@ Updates since v1.7.7
  * Variants of "git cherry-pick" and "git revert" that take multiple
    commits learned to "--continue".
 
+ * "git daemon" gives more human readble error messages to clients
+   using ERR packets when appropriate.
+
  * Errors at the network layer is logged by "git daemon".
 
  * "git diff" learned "--minimal" option to spend extra cycles to come
    up with a minimal patch output.
+
+ * "git diff" learned "--function-context" option to show the whole
+   function as context that was affected by a change.
+
+ * "git difftool" can be told to skip launching the tool for a path by
+   answering 'n' to its prompt.
 
  * "git fetch" learned to honor transfer.fsckobjects configuration to
    validate the objects that were received from the other end, just like
@@ -48,6 +53,10 @@ Updates since v1.7.7
    other end actually completes the history before updating the refs.
    "git receive-pack" (the receiving end of "git push") learned to do the
    same.
+
+ * "git fetch" learned that fetching/cloning from a regular file on the
+   filesystem is not necessarily a request to unpack a bundle file; the
+   file could be ".git" with "gitdir: <path>" in it.
 
  * "git for-each-ref" learned "%(contents:subject)", "%(contents:body)"
    and "%(contents:signature)". The last one is useful for signed tags.
@@ -63,7 +72,18 @@ Updates since v1.7.7
     files in the working tree, so that matches in new but not yet
     added files do not get missed.
 
+ * The recursive merge backend no longer looks for meaningless
+   existing merges in submodules unless in the outermost merge.
+
+ * "git log" and friends learned "--children" option.
+
  * "git ls-remote" learned to respond to "-h"(elp) requests.
+
+ * "git merge" learned the "--edit" option to allow users to edit the
+   merge commit log message.
+
+ * "git rebase -i" can be told to use special purpose editor suitable
+   only for its insn sheet via sequence.editor configuration variable.
 
  * "git send-email" learned to respond to "-h"(elp) requests.
 
@@ -75,6 +95,9 @@ Updates since v1.7.7
 
  * "git stash" learned "--include-untracked" option to stash away
    untracked/ignored cruft from the working tree.
+
+ * "git submodule clone" does not leak an error message to the UI
+   level unnecessarily anymore.
 
  * "git submodule update" learned to honor "none" as the value for
    submodule.<name>.update to specify that the named submodule should
@@ -92,6 +115,11 @@ Updates since v1.7.7
 
  * "gitweb" leaked unescaped control characters from syntax hiliter
    outputs.
+
+ * "gitweb" can be told to give custom string at the end of the HTML
+   HEAD element.
+
+ * "gitweb" now has its own manual pages.
 
 
 Also contains other documentation updates and minor code cleanups.
@@ -117,17 +145,20 @@ included in this release.
    credentials.
    (merge deba493 jk/http-auth later to maint).
 
+ * "git branch -m/-M" advertised to update RENAME_REF ref in the
+   commit log message that introduced the feature but not anywhere in
+   the documentation, and never did update such a ref anyway. This
+   undocumented misfeature that did not exist has been excised.
+   (merge b0eab01 jc/maint-remove-renamed-ref later to maint).
+
  * Adding many refs to the local repository in one go (e.g. "git fetch"
    that fetches many tags) and looking up a ref by name in a repository
    with too many refs were unnecessarily slow.
    (merge 17d68a54d jp/get-ref-dir-unsorted later to maint).
 
- * After incorrectly written third-party tools store a tag object in
-   HEAD, git diagnosed it as a repository corruption and refused to
-   proceed in order to avoid spreading the damage. We now gracefully
-   recover from such a situation by pretending as if the commit that
-   is pointed at by the tag were in HEAD.
-   (merge baf18fc nd/maint-autofix-tag-in-head later to maint).
+ * "git fetch --prune" was unsafe when used with refspecs from the
+   command line.
+   (merge e8c1e6c cn/fetch-prune later to maint).
 
  * Report from "git commit" on untracked files was confused under
    core.ignorecase option.
@@ -137,19 +168,9 @@ included in this release.
    core.ignorecase was set.
    (merge 6eba621 bc/attr-ignore-case later to maint).
 
- * "git apply --whitespace=error" did not bother to report the exact
-   line number in the patch that introduced new blank lines at the end
-   of the file.
-   (merge 8557263 jc/apply-blank-at-eof-fix later to maint).
-
  * "git bisect" did not notice when it failed to update the working tree
    to the next commit to be tested.
    (merge 1acf11717 js/bisect-no-checkout later to maint).
-
- * "git checkout $tree $directory/" resurrected paths locally removed or
-   modified only in the working tree in $directory/ that did not appear
-   in $directory of the given $tree. They should have been kept intact.
-   (merge 0a1283b jc/checkout-from-tree-keep-local-changes later to maint).
 
  * "git config --bool --get-regexp" failed to separate the variable name
    and its value "true" when the variable is defined without "= true".
@@ -179,13 +200,21 @@ included in this release.
    hooks for attempted removal of non-existing refs.
    (merge 160b81ed ph/push-to-delete-nothing later to maint).
 
+ * "git send-email" did not honor the configured hostname when restarting
+   the HELO/EHLO exchange after switching TLS on.
+   (merge 155b940 md/smtp-tls-hello-again later to maint).
+
  * "gitweb" used to produce a non-working link while showing the contents
    of a blob, when JavaScript actions are enabled.
    (merge 2b07ff3ff ps/gitweb-js-with-lineno later to maint).
 
+ * The logic to filter out forked projects in the project list in
+   "gitweb" was broken for some time.
+   (merge 53c632f jm/maint-gitweb-filter-forks-fix later to maint).
+
 ---
 exec >/var/tmp/1
-O=v1.7.7-368-g9638384
+O=v1.7.7.1-487-g4801546
 echo O=$(git describe --always master)
 git log --first-parent --oneline --reverse ^$O master
 echo

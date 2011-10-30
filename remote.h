@@ -96,8 +96,8 @@ void free_refspec(int nr_refspec, struct refspec *refspec);
 char *apply_refspecs(struct refspec *refspecs, int nr_refspec,
 		     const char *name);
 
-int match_refs(struct ref *src, struct ref **dst,
-	       int nr_refspec, const char **refspec, int all);
+int match_push_refs(struct ref *src, struct ref **dst,
+		    int nr_refspec, const char **refspec, int all);
 void set_ref_status_for_push(struct ref *remote_refs, int send_mirror,
 	int force_update);
 
@@ -164,6 +164,6 @@ struct ref *guess_remote_head(const struct ref *head,
 			      int all);
 
 /* Return refs which no longer exist on remote */
-struct ref *get_stale_heads(struct remote *remote, struct ref *fetch_map);
+struct ref *get_stale_heads(struct refspec *refs, int ref_count, struct ref *fetch_map);
 
 #endif

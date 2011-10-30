@@ -4,9 +4,8 @@
 #include "tag.h"
 #include "dir.h"
 
-/* ISSYMREF=01 and ISPACKED=02 are public interfaces */
-#define REF_KNOWS_PEELED 04
-#define REF_BROKEN 010
+/* ISSYMREF=0x01, ISPACKED=0x02 and ISBROKEN=0x04 are public interfaces */
+#define REF_KNOWS_PEELED 0x10
 
 struct ref_entry {
 	unsigned char flag; /* ISSYMREF? ISPACKED? */
@@ -134,15 +133,15 @@ static struct ref_entry *search_ref_array(struct ref_array *array, const char *n
  * Future: need to be in "struct repository"
  * when doing a full libification.
  */
-static struct cached_refs {
-	struct cached_refs *next;
+static struct ref_cache {
+	struct ref_cache *next;
 	char did_loose;
 	char did_packed;
 	struct ref_array loose;
 	struct ref_array packed;
 	/* The submodule name, or "" for the main repo. */
 	char name[FLEX_ARRAY];
-} *cached_refs;
+} *ref_cache;
 
 static struct ref_entry *current_ref;
 
@@ -158,36 +157,41 @@ static void free_ref_array(struct ref_array *array)
 	array->refs = NULL;
 }
 
-static void clear_cached_refs(struct cached_refs *ca)
+static void clear_packed_ref_cache(struct ref_cache *refs)
 {
-	if (ca->did_loose)
-		free_ref_array(&ca->loose);
-	if (ca->did_packed)
-		free_ref_array(&ca->packed);
-	ca->did_loose = ca->did_packed = 0;
+	if (refs->did_packed)
+		free_ref_array(&refs->packed);
+	refs->did_packed = 0;
 }
 
-static struct cached_refs *create_cached_refs(const char *submodule)
+static void clear_loose_ref_cache(struct ref_cache *refs)
+{
+	if (refs->did_loose)
+		free_ref_array(&refs->loose);
+	refs->did_loose = 0;
+}
+
+static struct ref_cache *create_ref_cache(const char *submodule)
 {
 	int len;
-	struct cached_refs *refs;
+	struct ref_cache *refs;
 	if (!submodule)
 		submodule = "";
 	len = strlen(submodule) + 1;
-	refs = xcalloc(1, sizeof(struct cached_refs) + len);
+	refs = xcalloc(1, sizeof(struct ref_cache) + len);
 	memcpy(refs->name, submodule, len);
 	return refs;
 }
 
 /*
- * Return a pointer to a cached_refs for the specified submodule. For
+ * Return a pointer to a ref_cache for the specified submodule. For
  * the main repository, use submodule==NULL. The returned structure
  * will be allocated and initialized but not necessarily populated; it
  * should not be freed.
  */
-static struct cached_refs *get_cached_refs(const char *submodule)
+static struct ref_cache *get_ref_cache(const char *submodule)
 {
-	struct cached_refs *refs = cached_refs;
+	struct ref_cache *refs = ref_cache;
 	if (!submodule)
 		submodule = "";
 	while (refs) {
@@ -196,19 +200,17 @@ static struct cached_refs *get_cached_refs(const char *submodule)
 		refs = refs->next;
 	}
 
-	refs = create_cached_refs(submodule);
-	refs->next = cached_refs;
-	cached_refs = refs;
+	refs = create_ref_cache(submodule);
+	refs->next = ref_cache;
+	ref_cache = refs;
 	return refs;
 }
 
-static void invalidate_cached_refs(void)
+void invalidate_ref_cache(const char *submodule)
 {
-	struct cached_refs *refs = cached_refs;
-	while (refs) {
-		clear_cached_refs(refs);
-		refs = refs->next;
-	}
+	struct ref_cache *refs = get_ref_cache(submodule);
+	clear_packed_ref_cache(refs);
+	clear_loose_ref_cache(refs);
 }
 
 static void read_packed_refs(FILE *f, struct ref_array *array)
@@ -257,7 +259,7 @@ void clear_extra_refs(void)
 
 static struct ref_array *get_packed_refs(const char *submodule)
 {
-	struct cached_refs *refs = get_cached_refs(submodule);
+	struct ref_cache *refs = get_ref_cache(submodule);
 
 	if (!refs->did_packed) {
 		const char *packed_refs_file;
@@ -329,12 +331,12 @@ static void get_ref_dir(const char *submodule, const char *base,
 				flag = 0;
 				if (resolve_gitlink_ref(submodule, ref, sha1) < 0) {
 					hashclr(sha1);
-					flag |= REF_BROKEN;
+					flag |= REF_ISBROKEN;
 				}
 			} else
 				if (!resolve_ref(ref, sha1, 1, &flag)) {
 					hashclr(sha1);
-					flag |= REF_BROKEN;
+					flag |= REF_ISBROKEN;
 				}
 			add_ref(ref, sha1, flag, array, NULL);
 		}
@@ -379,7 +381,7 @@ void warn_dangling_symref(FILE *fp, const char *msg_fmt, const char *refname)
 
 static struct ref_array *get_loose_refs(const char *submodule)
 {
-	struct cached_refs *refs = get_cached_refs(submodule);
+	struct ref_cache *refs = get_ref_cache(submodule);
 
 	if (!refs->did_loose) {
 		get_ref_dir(submodule, "refs", &refs->loose);
@@ -501,7 +503,6 @@ const char *resolve_ref(const char *ref, unsigned char *sha1, int reading, int *
 	ssize_t len;
 	char buffer[256];
 	static char ref_buffer[256];
-	char path[PATH_MAX];
 
 	if (flag)
 		*flag = 0;
@@ -510,6 +511,7 @@ const char *resolve_ref(const char *ref, unsigned char *sha1, int reading, int *
 		return NULL;
 
 	for (;;) {
+		char path[PATH_MAX];
 		struct stat st;
 		char *buf;
 		int fd;
@@ -582,21 +584,22 @@ const char *resolve_ref(const char *ref, unsigned char *sha1, int reading, int *
 		 */
 		if (prefixcmp(buffer, "ref:"))
 			break;
+		if (flag)
+			*flag |= REF_ISSYMREF;
 		buf = buffer + 4;
 		while (isspace(*buf))
 			buf++;
 		if (check_refname_format(buf, REFNAME_ALLOW_ONELEVEL)) {
-			warning("symbolic reference in %s is formatted incorrectly",
-				path);
+			if (flag)
+				*flag |= REF_ISBROKEN;
 			return NULL;
 		}
 		ref = strcpy(ref_buffer, buf);
-		if (flag)
-			*flag |= REF_ISSYMREF;
 	}
 	/* Please note that FETCH_HEAD has a second line containing other data. */
 	if (get_sha1_hex(buffer, sha1) || (buffer[40] != '\0' && !isspace(buffer[40]))) {
-		warning("reference in %s is formatted incorrectly", path);
+		if (flag)
+			*flag |= REF_ISBROKEN;
 		return NULL;
 	}
 	return ref;
@@ -624,8 +627,8 @@ static int do_one_ref(const char *base, each_ref_fn fn, int trim,
 		return 0;
 
 	if (!(flags & DO_FOR_EACH_INCLUDE_BROKEN)) {
-		if (entry->flag & REF_BROKEN)
-			return 0; /* ignore dangling symref */
+		if (entry->flag & REF_ISBROKEN)
+			return 0; /* ignore broken refs e.g. dangling symref */
 		if (!has_sha1_file(entry->sha1)) {
 			error("%s does not point to a valid object!", entry->name);
 			return 0;
@@ -1075,6 +1078,94 @@ static int is_refname_available(const char *ref, const char *oldref,
 	return 1;
 }
 
+/*
+ * *string and *len will only be substituted, and *string returned (for
+ * later free()ing) if the string passed in is a magic short-hand form
+ * to name a branch.
+ */
+static char *substitute_branch_name(const char **string, int *len)
+{
+	struct strbuf buf = STRBUF_INIT;
+	int ret = interpret_branch_name(*string, &buf);
+
+	if (ret == *len) {
+		size_t size;
+		*string = strbuf_detach(&buf, &size);
+		*len = size;
+		return (char *)*string;
+	}
+
+	return NULL;
+}
+
+int dwim_ref(const char *str, int len, unsigned char *sha1, char **ref)
+{
+	char *last_branch = substitute_branch_name(&str, &len);
+	const char **p, *r;
+	int refs_found = 0;
+
+	*ref = NULL;
+	for (p = ref_rev_parse_rules; *p; p++) {
+		char fullref[PATH_MAX];
+		unsigned char sha1_from_ref[20];
+		unsigned char *this_result;
+		int flag;
+
+		this_result = refs_found ? sha1_from_ref : sha1;
+		mksnpath(fullref, sizeof(fullref), *p, len, str);
+		r = resolve_ref(fullref, this_result, 1, &flag);
+		if (r) {
+			if (!refs_found++)
+				*ref = xstrdup(r);
+			if (!warn_ambiguous_refs)
+				break;
+		} else if ((flag & REF_ISSYMREF) && strcmp(fullref, "HEAD")) {
+			warning("ignoring dangling symref %s.", fullref);
+		} else if ((flag & REF_ISBROKEN) && strchr(fullref, '/')) {
+			warning("ignoring broken ref %s.", fullref);
+		}
+	}
+	free(last_branch);
+	return refs_found;
+}
+
+int dwim_log(const char *str, int len, unsigned char *sha1, char **log)
+{
+	char *last_branch = substitute_branch_name(&str, &len);
+	const char **p;
+	int logs_found = 0;
+
+	*log = NULL;
+	for (p = ref_rev_parse_rules; *p; p++) {
+		struct stat st;
+		unsigned char hash[20];
+		char path[PATH_MAX];
+		const char *ref, *it;
+
+		mksnpath(path, sizeof(path), *p, len, str);
+		ref = resolve_ref(path, hash, 1, NULL);
+		if (!ref)
+			continue;
+		if (!stat(git_path("logs/%s", path), &st) &&
+		    S_ISREG(st.st_mode))
+			it = path;
+		else if (strcmp(ref, path) &&
+			 !stat(git_path("logs/%s", ref), &st) &&
+			 S_ISREG(st.st_mode))
+			it = ref;
+		else
+			continue;
+		if (!logs_found++) {
+			*log = xstrdup(it);
+			hashcpy(sha1, hash);
+		}
+		if (!warn_ambiguous_refs)
+			break;
+	}
+	free(last_branch);
+	return logs_found;
+}
+
 static struct ref_lock *lock_ref_sha1_basic(const char *ref, const unsigned char *old_sha1, int flags, int *type_p)
 {
 	char *ref_file;
@@ -1238,7 +1329,7 @@ int delete_ref(const char *refname, const unsigned char *sha1, int delopt)
 	ret |= repack_without_ref(refname);
 
 	unlink_or_warn(git_path("logs/%s", lock->ref_name));
-	invalidate_cached_refs();
+	invalidate_ref_cache(NULL);
 	unlock_ref(lock);
 	return ret;
 }
@@ -1254,7 +1345,6 @@ int delete_ref(const char *refname, const unsigned char *sha1, int delopt)
 
 int rename_ref(const char *oldref, const char *newref, const char *logmsg)
 {
-	static const char renamed_ref[] = "RENAMED-REF";
 	unsigned char sha1[20], orig_sha1[20];
 	int flag = 0, logmoved = 0;
 	struct ref_lock *lock;
@@ -1277,13 +1367,6 @@ int rename_ref(const char *oldref, const char *newref, const char *logmsg)
 
 	if (!is_refname_available(newref, oldref, get_loose_refs(NULL), 0))
 		return 1;
-
-	lock = lock_ref_sha1_basic(renamed_ref, NULL, 0, NULL);
-	if (!lock)
-		return error("unable to lock %s", renamed_ref);
-	lock->force_write = 1;
-	if (write_ref_sha1(lock, orig_sha1, logmsg))
-		return error("unable to save current sha1 in %s", renamed_ref);
 
 	if (log && rename(git_path("logs/%s", oldref), git_path(TMP_RENAMED_LOG)))
 		return error("unable to move logfile logs/%s to "TMP_RENAMED_LOG": %s",
@@ -1537,7 +1620,7 @@ int write_ref_sha1(struct ref_lock *lock,
 		unlock_ref(lock);
 		return -1;
 	}
-	invalidate_cached_refs();
+	clear_loose_ref_cache(get_ref_cache(NULL));
 	if (log_ref_write(lock->ref_name, lock->old_sha1, sha1, logmsg) < 0 ||
 	    (strcmp(lock->ref_name, lock->orig_ref_name) &&
 	     log_ref_write(lock->orig_ref_name, lock->old_sha1, sha1, logmsg) < 0)) {
