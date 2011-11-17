@@ -1399,7 +1399,7 @@ static int set_branches(int argc, const char **argv)
 			     builtin_remote_setbranches_usage, 0);
 	if (argc == 0) {
 		error("no remote specified");
-		usage_with_options(builtin_remote_seturl_usage, options);
+		usage_with_options(builtin_remote_setbranches_usage, options);
 	}
 	argv[argc] = NULL;
 
@@ -1427,7 +1427,7 @@ static int set_url(int argc, const char **argv)
 			    "delete URLs"),
 		OPT_END()
 	};
-	argc = parse_options(argc, argv, NULL, options, builtin_remote_update_usage,
+	argc = parse_options(argc, argv, NULL, options, builtin_remote_seturl_usage,
 			     PARSE_OPT_KEEP_ARGV0);
 
 	if (add_mode && delete_mode)
