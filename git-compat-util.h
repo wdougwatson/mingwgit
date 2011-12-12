@@ -116,7 +116,12 @@
 #else
 #include <poll.h>
 #endif
-#ifndef __MINGW32__
+#if defined(__MINGW32__)
+/* pull in Windows compatibility stuff */
+#include "compat/mingw.h"
+#elif defined(_MSC_VER)
+#include "compat/msvc.h"
+#else
 #include <sys/wait.h>
 #include <sys/resource.h>
 #include <sys/socket.h>
@@ -145,12 +150,6 @@
 #include <grp.h>
 #define _ALL_SOURCE 1
 #endif
-#else 	/* __MINGW32__ */
-/* pull in Windows compatibility stuff */
-#include "compat/mingw.h"
-#endif	/* __MINGW32__ */
-#ifdef _MSC_VER
-#include "compat/msvc.h"
 #endif
 
 #ifndef NO_LIBGEN_H
@@ -351,6 +350,8 @@ extern size_t gitstrlcpy(char *, const char *, size_t);
 #ifdef NO_STRTOUMAX
 #define strtoumax gitstrtoumax
 extern uintmax_t gitstrtoumax(const char *, char **, int);
+#define strtoimax gitstrtoimax
+extern intmax_t gitstrtoimax(const char *, char **, int);
 #endif
 
 #ifdef NO_STRTOK_R

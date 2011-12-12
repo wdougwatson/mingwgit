@@ -306,7 +306,7 @@ static inline unsigned int canon_mode(unsigned int mode)
 }
 
 #define flexible_size(STRUCT,len) ((offsetof(struct STRUCT,name) + (len) + 8) & ~7)
-#define cache_entry_size(len) flexible_size(cache_entry,len)
+#define cache_entry_size(len) (offsetof(struct cache_entry,name) + (len) + 1)
 #define ondisk_cache_entry_size(len) flexible_size(ondisk_cache_entry,len)
 #define ondisk_cache_entry_extended_size(len) flexible_size(ondisk_cache_entry_extended,len)
 
@@ -316,7 +316,6 @@ struct index_state {
 	struct string_list *resolve_undo;
 	struct cache_tree *cache_tree;
 	struct cache_time timestamp;
-	void *alloc;
 	unsigned name_hash_initialized : 1,
 		 initialized : 1;
 	struct hash_table name_hash;
@@ -832,6 +831,8 @@ static inline int get_sha1_with_context(const char *str, unsigned char *sha1, st
 extern int get_sha1_hex(const char *hex, unsigned char *sha1);
 
 extern char *sha1_to_hex(const unsigned char *sha1);	/* static buffer result! */
+extern int read_ref_full(const char *filename, unsigned char *sha1,
+			 int reading, int *flags);
 extern int read_ref(const char *filename, unsigned char *sha1);
 
 /*
@@ -873,7 +874,7 @@ extern int get_sha1_mb(const char *str, unsigned char *sha1);
 
 extern int refname_match(const char *abbrev_name, const char *full_name, const char **rules);
 extern const char *ref_rev_parse_rules[];
-extern const char *ref_fetch_rules[];
+#define ref_fetch_rules ref_rev_parse_rules
 
 extern int create_symref(const char *ref, const char *refs_heads_master, const char *logmsg);
 extern int validate_headref(const char *ref);

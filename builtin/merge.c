@@ -26,6 +26,7 @@
 #include "merge-recursive.h"
 #include "resolve-undo.h"
 #include "remote.h"
+#include "fmt-merge-msg.h"
 
 #define DEFAULT_TWOHEAD (1<<0)
 #define DEFAULT_OCTOPUS (1<<1)
@@ -44,7 +45,7 @@ static const char * const builtin_merge_usage[] = {
 	NULL
 };
 
-static int show_diffstat = 1, shortlog_len, squash;
+static int show_diffstat = 1, shortlog_len = -1, squash;
 static int option_commit = 1, allow_fast_forward = 1;
 static int fast_forward_only, option_edit;
 static int allow_trivial = 1, have_message;
@@ -408,21 +409,11 @@ static void finish(struct commit *head_commit,
 	strbuf_release(&reflog_message);
 }
 
-static struct object *want_commit(const char *name)
-{
-	struct object *obj;
-	unsigned char sha1[20];
-	if (get_sha1(name, sha1))
-		return NULL;
-	obj = parse_object(sha1);
-	return peel_to_type(name, 0, obj, OBJ_COMMIT);
-}
-
 /* Get the name for the merge commit's message. */
 static void merge_name(const char *remote, struct strbuf *msg)
 {
-	struct object *remote_head;
-	unsigned char branch_head[20], buf_sha[20];
+	struct commit *remote_head;
+	unsigned char branch_head[20];
 	struct strbuf buf = STRBUF_INIT;
 	struct strbuf bname = STRBUF_INIT;
 	const char *ptr;
@@ -433,13 +424,18 @@ static void merge_name(const char *remote, struct strbuf *msg)
 	remote = bname.buf;
 
 	memset(branch_head, 0, sizeof(branch_head));
-	remote_head = want_commit(remote);
+	remote_head = get_merge_parent(remote);
 	if (!remote_head)
 		die(_("'%s' does not point to a commit"), remote);
 
 	if (dwim_ref(remote, strlen(remote), branch_head, &found_ref) > 0) {
 		if (!prefixcmp(found_ref, "refs/heads/")) {
 			strbuf_addf(msg, "%s\t\tbranch '%s' of .\n",
+				    sha1_to_hex(branch_head), remote);
+			goto cleanup;
+		}
+		if (!prefixcmp(found_ref, "refs/tags/")) {
+			strbuf_addf(msg, "%s\t\ttag '%s' of .\n",
 				    sha1_to_hex(branch_head), remote);
 			goto cleanup;
 		}
@@ -481,10 +477,10 @@ static void merge_name(const char *remote, struct strbuf *msg)
 		strbuf_addstr(&truname, "refs/heads/");
 		strbuf_addstr(&truname, remote);
 		strbuf_setlen(&truname, truname.len - len);
-		if (resolve_ref(truname.buf, buf_sha, 1, NULL)) {
+		if (ref_exists(truname.buf)) {
 			strbuf_addf(msg,
 				    "%s\t\tbranch '%s'%s of .\n",
-				    sha1_to_hex(remote_head->sha1),
+				    sha1_to_hex(remote_head->object.sha1),
 				    truname.buf + 11,
 				    (early ? " (early part)" : ""));
 			strbuf_release(&truname);
@@ -514,7 +510,7 @@ static void merge_name(const char *remote, struct strbuf *msg)
 		goto cleanup;
 	}
 	strbuf_addf(msg, "%s\t\tcommit '%s'\n",
-		sha1_to_hex(remote_head->sha1), remote);
+		sha1_to_hex(remote_head->object.sha1), remote);
 cleanup:
 	strbuf_release(&buf);
 	strbuf_release(&bname);
@@ -542,6 +538,8 @@ static void parse_branch_merge_options(char *bmo)
 
 static int git_merge_config(const char *k, const char *v, void *cb)
 {
+	int status;
+
 	if (branch && !prefixcmp(k, "branch.") &&
 		!prefixcmp(k + 7, branch) &&
 		!strcmp(k + 7 + strlen(branch), ".mergeoptions")) {
@@ -558,15 +556,7 @@ static int git_merge_config(const char *k, const char *v, void *cb)
 		return git_config_string(&pull_octopus, k, v);
 	else if (!strcmp(k, "merge.renormalize"))
 		option_renormalize = git_config_bool(k, v);
-	else if (!strcmp(k, "merge.log") || !strcmp(k, "merge.summary")) {
-		int is_bool;
-		shortlog_len = git_config_bool_or_int(k, v, &is_bool);
-		if (!is_bool && shortlog_len < 0)
-			return error(_("%s: negative length %s"), k, v);
-		if (is_bool && shortlog_len)
-			shortlog_len = DEFAULT_MERGE_LOG_LEN;
-		return 0;
-	} else if (!strcmp(k, "merge.ff")) {
+	else if (!strcmp(k, "merge.ff")) {
 		int boolval = git_config_maybe_bool(k, v);
 		if (0 <= boolval) {
 			allow_fast_forward = boolval;
@@ -579,6 +569,9 @@ static int git_merge_config(const char *k, const char *v, void *cb)
 		default_to_upstream = git_config_bool(k, v);
 		return 0;
 	}
+	status = fmt_merge_msg_config(k, v, cb);
+	if (status)
+		return status;
 	return git_diff_ui_config(k, v, cb);
 }
 
@@ -718,7 +711,7 @@ static int try_merge_strategy(const char *strategy, struct commit_list *common,
 				die(_("Unknown option for merge-recursive: -X%s"), xopts[x]);
 
 		o.branch1 = head_arg;
-		o.branch2 = remoteheads->item->util;
+		o.branch2 = merge_remote_util(remoteheads->item)->name;
 
 		for (j = common; j; j = j->next)
 			commit_list_insert(j->item, &reversed);
@@ -775,7 +768,7 @@ int checkout_fast_forward(const unsigned char *head, const unsigned char *remote
 	memset(&t, 0, sizeof(t));
 	memset(&dir, 0, sizeof(dir));
 	dir.flags |= DIR_SHOW_IGNORED;
-	dir.exclude_per_dir = ".gitignore";
+	setup_standard_excludes(&dir);
 	opts.dir = &dir;
 
 	opts.head_idx = 1;
@@ -1058,9 +1051,16 @@ static void write_merge_state(void)
 	struct commit_list *j;
 	struct strbuf buf = STRBUF_INIT;
 
-	for (j = remoteheads; j; j = j->next)
-		strbuf_addf(&buf, "%s\n",
-			sha1_to_hex(j->item->object.sha1));
+	for (j = remoteheads; j; j = j->next) {
+		unsigned const char *sha1;
+		struct commit *c = j->item;
+		if (c->util && merge_remote_util(c)->obj) {
+			sha1 = merge_remote_util(c)->obj->sha1;
+		} else {
+			sha1 = c->object.sha1;
+		}
+		strbuf_addf(&buf, "%s\n", sha1_to_hex(sha1));
+	}
 	filename = git_path("MERGE_HEAD");
 	fd = open(filename, O_WRONLY | O_CREAT, 0666);
 	if (fd < 0)
@@ -1091,7 +1091,7 @@ int cmd_merge(int argc, const char **argv, const char *prefix)
 	struct commit *head_commit;
 	struct strbuf buf = STRBUF_INIT;
 	const char *head_arg;
-	int flag, i;
+	int flag, i, ret = 0;
 	int best_cnt = -1, merge_was_ok = 0, automerge_was_ok = 0;
 	struct commit_list *common = NULL;
 	const char *best_strategy = NULL, *wt_strategy = NULL;
@@ -1105,8 +1105,11 @@ int cmd_merge(int argc, const char **argv, const char *prefix)
 	 * current branch.
 	 */
 	branch = resolve_ref("HEAD", head_sha1, 0, &flag);
-	if (branch && !prefixcmp(branch, "refs/heads/"))
-		branch += 11;
+	if (branch) {
+		if (!prefixcmp(branch, "refs/heads/"))
+			branch += 11;
+		branch = xstrdup(branch);
+	}
 	if (!branch || is_null_sha1(head_sha1))
 		head_commit = NULL;
 	else
@@ -1118,6 +1121,8 @@ int cmd_merge(int argc, const char **argv, const char *prefix)
 		parse_branch_merge_options(branch_mergeoptions);
 	argc = parse_options(argc, argv, prefix, builtin_merge_options,
 			builtin_merge_usage, 0);
+	if (shortlog_len < 0)
+		shortlog_len = (merge_log_config > 0) ? merge_log_config : 0;
 
 	if (verbosity < 0 && show_progress == -1)
 		show_progress = 0;
@@ -1130,7 +1135,8 @@ int cmd_merge(int argc, const char **argv, const char *prefix)
 			die(_("There is no merge to abort (MERGE_HEAD missing)."));
 
 		/* Invoke 'git reset --merge' */
-		return cmd_reset(nargc, nargv, prefix);
+		ret = cmd_reset(nargc, nargv, prefix);
+		goto done;
 	}
 
 	if (read_cache_unmerged())
@@ -1169,9 +1175,12 @@ int cmd_merge(int argc, const char **argv, const char *prefix)
 		die(_("You cannot combine --no-ff with --ff-only."));
 
 	if (!abort_current_merge) {
-		if (!argc && default_to_upstream)
-			argc = setup_with_upstream(&argv);
-		else if (argc == 1 && !strcmp(argv[0], "-"))
+		if (!argc) {
+			if (default_to_upstream)
+				argc = setup_with_upstream(&argv);
+			else
+				die(_("No commit specified and merge.defaultToUpstream not set."));
+		} else if (argc == 1 && !strcmp(argv[0], "-"))
 			argv[0] = "@{-1}";
 	}
 	if (!argc)
@@ -1194,7 +1203,7 @@ int cmd_merge(int argc, const char **argv, const char *prefix)
 		argv += 2;
 		argc -= 2;
 	} else if (!head_commit) {
-		struct object *remote_head;
+		struct commit *remote_head;
 		/*
 		 * If the merged head is a valid one there is no reason
 		 * to forbid "git merge" into a branch yet to be born.
@@ -1208,13 +1217,13 @@ int cmd_merge(int argc, const char **argv, const char *prefix)
 		if (!allow_fast_forward)
 			die(_("Non-fast-forward commit does not make sense into "
 			    "an empty head"));
-		remote_head = want_commit(argv[0]);
+		remote_head = get_merge_parent(argv[0]);
 		if (!remote_head)
 			die(_("%s - not something we can merge"), argv[0]);
-		read_empty(remote_head->sha1, 0);
-		update_ref("initial pull", "HEAD", remote_head->sha1, NULL, 0,
-				DIE_ON_ERR);
-		return 0;
+		read_empty(remote_head->object.sha1, 0);
+		update_ref("initial pull", "HEAD", remote_head->object.sha1,
+			   NULL, 0, DIE_ON_ERR);
+		goto done;
 	} else {
 		struct strbuf merge_names = STRBUF_INIT;
 
@@ -1222,19 +1231,20 @@ int cmd_merge(int argc, const char **argv, const char *prefix)
 		head_arg = "HEAD";
 
 		/*
-		 * All the rest are the commits being merged;
-		 * prepare the standard merge summary message to
-		 * be appended to the given message.  If remote
-		 * is invalid we will die later in the common
-		 * codepath so we discard the error in this
-		 * loop.
+		 * All the rest are the commits being merged; prepare
+		 * the standard merge summary message to be appended
+		 * to the given message.
 		 */
 		for (i = 0; i < argc; i++)
 			merge_name(argv[i], &merge_names);
 
 		if (!have_message || shortlog_len) {
-			fmt_merge_msg(&merge_names, &merge_msg, !have_message,
-				      shortlog_len);
+			struct fmt_merge_msg_opts opts;
+			memset(&opts, 0, sizeof(opts));
+			opts.add_title = !have_message;
+			opts.shortlog_len = shortlog_len;
+
+			fmt_merge_msg(&merge_names, &merge_msg, &opts);
 			if (merge_msg.len)
 				strbuf_setlen(&merge_msg, merge_msg.len - 1);
 		}
@@ -1251,19 +1261,20 @@ int cmd_merge(int argc, const char **argv, const char *prefix)
 	strbuf_reset(&buf);
 
 	for (i = 0; i < argc; i++) {
-		struct object *o;
-		struct commit *commit;
-
-		o = want_commit(argv[i]);
-		if (!o)
+		struct commit *commit = get_merge_parent(argv[i]);
+		if (!commit)
 			die(_("%s - not something we can merge"), argv[i]);
-		commit = lookup_commit(o->sha1);
-		commit->util = (void *)argv[i];
 		remotes = &commit_list_insert(commit, remotes)->next;
-
-		strbuf_addf(&buf, "GITHEAD_%s", sha1_to_hex(o->sha1));
+		strbuf_addf(&buf, "GITHEAD_%s",
+			    sha1_to_hex(commit->object.sha1));
 		setenv(buf.buf, argv[i], 1);
 		strbuf_reset(&buf);
+		if (merge_remote_util(commit) &&
+		    merge_remote_util(commit)->obj &&
+		    merge_remote_util(commit)->obj->type == OBJ_TAG) {
+			option_edit = 1;
+			allow_fast_forward = 0;
+		}
 	}
 
 	if (!use_strategies) {
@@ -1301,13 +1312,13 @@ int cmd_merge(int argc, const char **argv, const char *prefix)
 		 * but first the most common case of merging one remote.
 		 */
 		finish_up_to_date("Already up-to-date.");
-		return 0;
+		goto done;
 	} else if (allow_fast_forward && !remoteheads->next &&
 			!common->next &&
 			!hashcmp(common->item->object.sha1, head_commit->object.sha1)) {
 		/* Again the most common case of merging one remote. */
 		struct strbuf msg = STRBUF_INIT;
-		struct object *o;
+		struct commit *commit;
 		char hex[41];
 
 		strcpy(hex, find_unique_abbrev(head_commit->object.sha1, DEFAULT_ABBREV));
@@ -1321,16 +1332,21 @@ int cmd_merge(int argc, const char **argv, const char *prefix)
 		if (have_message)
 			strbuf_addstr(&msg,
 				" (no commit created; -m option ignored)");
-		o = want_commit(sha1_to_hex(remoteheads->item->object.sha1));
-		if (!o)
-			return 1;
+		commit = remoteheads->item;
+		if (!commit) {
+			ret = 1;
+			goto done;
+		}
 
-		if (checkout_fast_forward(head_commit->object.sha1, remoteheads->item->object.sha1))
-			return 1;
+		if (checkout_fast_forward(head_commit->object.sha1,
+					  commit->object.sha1)) {
+			ret = 1;
+			goto done;
+		}
 
-		finish(head_commit, o->sha1, msg.buf);
+		finish(head_commit, commit->object.sha1, msg.buf);
 		drop_save();
-		return 0;
+		goto done;
 	} else if (!remoteheads->next && common->next)
 		;
 		/*
@@ -1348,8 +1364,11 @@ int cmd_merge(int argc, const char **argv, const char *prefix)
 			git_committer_info(IDENT_ERROR_ON_NO_NAME);
 			printf(_("Trying really trivial in-index merge...\n"));
 			if (!read_tree_trivial(common->item->object.sha1,
-					head_commit->object.sha1, remoteheads->item->object.sha1))
-				return merge_trivial(head_commit);
+					       head_commit->object.sha1,
+					       remoteheads->item->object.sha1)) {
+				ret = merge_trivial(head_commit);
+				goto done;
+			}
 			printf(_("Nope.\n"));
 		}
 	} else {
@@ -1377,7 +1396,7 @@ int cmd_merge(int argc, const char **argv, const char *prefix)
 		}
 		if (up_to_date) {
 			finish_up_to_date("Already up-to-date. Yeeah!");
-			return 0;
+			goto done;
 		}
 	}
 
@@ -1459,9 +1478,11 @@ int cmd_merge(int argc, const char **argv, const char *prefix)
 	 * If we have a resulting tree, that means the strategy module
 	 * auto resolved the merge cleanly.
 	 */
-	if (automerge_was_ok)
-		return finish_automerge(head_commit, common, result_tree,
-					wt_strategy);
+	if (automerge_was_ok) {
+		ret = finish_automerge(head_commit, common, result_tree,
+				       wt_strategy);
+		goto done;
+	}
 
 	/*
 	 * Pick the result from the best strategy and have the user fix
@@ -1475,7 +1496,8 @@ int cmd_merge(int argc, const char **argv, const char *prefix)
 		else
 			fprintf(stderr, _("Merge with strategy %s failed.\n"),
 				use_strategies[0]->name);
-		return 2;
+		ret = 2;
+		goto done;
 	} else if (best_strategy == wt_strategy)
 		; /* We already have its result in the working tree. */
 	else {
@@ -1491,10 +1513,13 @@ int cmd_merge(int argc, const char **argv, const char *prefix)
 	else
 		write_merge_state();
 
-	if (merge_was_ok) {
+	if (merge_was_ok)
 		fprintf(stderr, _("Automatic merge went well; "
 			"stopped before committing as requested\n"));
-		return 0;
-	} else
-		return suggest_conflicts(option_renormalize);
+	else
+		ret = suggest_conflicts(option_renormalize);
+
+done:
+	free((char *)branch);
+	return ret;
 }
