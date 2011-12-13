@@ -11,10 +11,6 @@ that are currently checked out.
 
 . ./test-lib.sh
 
-case $(uname -s) in
-*MINGW*) GIT_TEST_CMP="diff -uw";;
-esac
-
 
 test_expect_success 'setup a submodule tree' '
 	echo file > file &&
