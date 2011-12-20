@@ -44,6 +44,7 @@ export LANG LC_ALL PAGER TERM TZ
 EDITOR=:
 unset VISUAL
 unset EMAIL
+unset LANGUAGE
 unset $(perl -e '
 	my @env = keys %ENV;
 	my $ok = join("|", qw(
@@ -377,6 +378,11 @@ test_unconfig () {
 test_config () {
 	test_when_finished "test_unconfig '$1'" &&
 	git config "$@"
+}
+
+test_config_global () {
+	test_when_finished "test_unconfig --global '$1'" &&
+	git config --global "$@"
 }
 
 # Use test_set_prereq to tell that a particular prerequisite is available.
@@ -1113,12 +1119,14 @@ esac
 test -z "$NO_PERL" && test_set_prereq PERL
 test -z "$NO_PYTHON" && test_set_prereq PYTHON
 test -n "$USE_LIBPCRE" && test_set_prereq LIBPCRE
+test -z "$NO_GETTEXT" && test_set_prereq GETTEXT
 
 # Can we rely on git's output in the C locale?
 if test -n "$GETTEXT_POISON"
 then
 	GIT_GETTEXT_POISON=YesPlease
 	export GIT_GETTEXT_POISON
+	test_set_prereq GETTEXT_POISON
 else
 	test_set_prereq C_LOCALE_OUTPUT
 fi

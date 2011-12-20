@@ -434,6 +434,7 @@ static void handle_internal_command(int argc, const char **argv)
 		{ "update-ref", cmd_update_ref, RUN_SETUP },
 		{ "update-server-info", cmd_update_server_info, RUN_SETUP },
 		{ "upload-archive", cmd_upload_archive },
+		{ "upload-archive--writer", cmd_upload_archive_writer },
 		{ "var", cmd_var, RUN_SETUP_GENTLY },
 		{ "verify-pack", cmd_verify_pack },
 		{ "verify-tag", cmd_verify_tag, RUN_SETUP },
@@ -536,6 +537,8 @@ int main(int argc, const char **argv)
 	cmd = git_extract_argv0_path(argv[0]);
 	if (!cmd)
 		cmd = "git-help";
+
+	git_setup_gettext();
 
 	/*
 	 * "git-xxxx" is the same as "git xxxx", but we obviously:

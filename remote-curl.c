@@ -200,7 +200,7 @@ static struct ref *parse_git_refs(struct discovery *heads)
 
 	if (start_async(&async))
 		die("cannot start thread to parse advertised refs");
-	get_remote_heads(async.out, &list, 0, NULL, 0, NULL);
+	get_remote_heads(async.out, &list, 0, NULL);
 	close(async.out);
 	if (finish_async(&async))
 		die("ref parsing thread failed");
@@ -859,7 +859,7 @@ int main(int argc, const char **argv)
 
 	url = strbuf_detach(&buf, NULL);
 
-	http_init(remote, url);
+	http_init(remote, url, 0);
 
 	do {
 		if (strbuf_getline(&buf, stdin, '\n') == EOF) {

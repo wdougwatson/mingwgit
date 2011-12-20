@@ -3,7 +3,6 @@
 #include "refs.h"
 #include "remote.h"
 #include "commit.h"
-#include "sequencer.h"
 
 struct tracking {
 	struct refspec spec;
@@ -182,7 +181,7 @@ int validate_new_branchname(const char *name, struct strbuf *ref,
 		const char *head;
 		unsigned char sha1[20];
 
-		head = resolve_ref("HEAD", sha1, 0, NULL);
+		head = resolve_ref_unsafe("HEAD", sha1, 0, NULL);
 		if (!is_bare_repository() && head && !strcmp(head, ref->buf))
 			die("Cannot force update the current branch.");
 	}
@@ -280,5 +279,4 @@ void remove_branch_state(void)
 	unlink(git_path("MERGE_MSG"));
 	unlink(git_path("MERGE_MODE"));
 	unlink(git_path("SQUASH_MSG"));
-	remove_sequencer_state(0);
 }
