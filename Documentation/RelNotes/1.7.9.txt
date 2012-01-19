@@ -1,4 +1,4 @@
-Git v1.7.9 Release Notes (draft)
+Git v1.7.9 Release Notes
 ========================
 
 Updates since v1.7.8
@@ -27,6 +27,10 @@ Updates since v1.7.8
  * The internal of "revert/cherry-pick" has been tweaked to prepare
    building more generic "sequencer" on top of the implementation that
    drives them.
+
+ * "git rev-parse FETCH_HEAD" after "git fetch" without specifying
+   what to fetch from the command line will now show the commit that
+   would be merged if the command were "git pull".
 
  * "git add" learned to stream large files directly into a packfile
    instead of writing them into individual loose object files.
@@ -105,11 +109,3 @@ Fixes since v1.7.8
 Unless otherwise noted, all the fixes since v1.7.8 in the maintenance
 releases are contained in this release (see release notes to them for
 details).
-
---
-exec >/var/tmp/1
-O=v1.7.8.2-301-g48de656
-echo O=$(git describe master)
-git log --first-parent --oneline --reverse ^$O master
-echo
-git shortlog --no-merges ^$O ^maint master
