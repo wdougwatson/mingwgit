@@ -64,7 +64,8 @@ GIT_AUTHOR_NAME='A U Thor'
 GIT_COMMITTER_EMAIL=committer@example.com
 GIT_COMMITTER_NAME='C O Mitter'
 GIT_MERGE_VERBOSITY=5
-export GIT_MERGE_VERBOSITY
+GIT_MERGE_AUTOEDIT=no
+export GIT_MERGE_VERBOSITY GIT_MERGE_AUTOEDIT
 export GIT_AUTHOR_EMAIL GIT_AUTHOR_NAME
 export GIT_COMMITTER_EMAIL GIT_COMMITTER_NAME
 export EDITOR
@@ -394,9 +395,18 @@ test_config () {
 	git config "$@"
 }
 
+
 test_config_global () {
 	test_when_finished "test_unconfig --global '$1'" &&
 	git config --global "$@"
+}
+
+write_script () {
+	{
+		echo "#!${2-"$SHELL_PATH"}" &&
+		cat
+	} >"$1" &&
+	chmod +x "$1"
 }
 
 # Use test_set_prereq to tell that a particular prerequisite is available.

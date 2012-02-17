@@ -47,11 +47,18 @@ all::
 # A translated Git requires GNU libintl or another gettext implementation,
 # plus libintl-perl at runtime.
 #
+# Define USE_GETTEXT_SCHEME and set it to 'fallthrough', if you don't trust
+# the installed gettext translation of the shell scripts output.
+#
 # Define HAVE_LIBCHARSET_H if you haven't set NO_GETTEXT and you can't
 # trust the langinfo.h's nl_langinfo(CODESET) function to return the
 # current character set. GNU and Solaris have a nl_langinfo(CODESET),
 # FreeBSD can use either, but MinGW and some others need to use
 # libcharset.h's locale_charset() instead.
+#
+# Define CHARSET_LIB to you need to link with library other than -liconv to
+# use locale_charset() function.  On some platforms this needs to set to
+# -lcharset
 #
 # Define LIBC_CONTAINS_LIBINTL if your gettext implementation doesn't
 # need -lintl when linking.
@@ -339,7 +346,7 @@ pathsep = :
 
 export prefix bindir sharedir sysconfdir gitwebdir localedir
 
-CC = gcc
+CC = cc
 AR = ar
 RM = rm -f
 DIFF = diff
@@ -374,6 +381,11 @@ BUILTIN_OBJS =
 BUILT_INS =
 COMPAT_CFLAGS =
 COMPAT_OBJS =
+XDIFF_H =
+XDIFF_OBJS =
+VCSSVN_H =
+VCSSVN_OBJS =
+VCSSVN_TEST_OBJS =
 EXTRA_CPPFLAGS =
 LIB_H =
 LIB_OBJS =
@@ -452,6 +464,9 @@ PROGRAM_OBJS += http-backend.o
 PROGRAM_OBJS += sh-i18n--envsubst.o
 PROGRAM_OBJS += credential-store.o
 
+# Binary suffix, set to .exe for Windows builds
+X =
+
 PROGRAMS += $(patsubst %.o,git-%$X,$(PROGRAM_OBJS))
 
 TEST_PROGRAMS_NEED_X += test-chmtime
@@ -466,16 +481,13 @@ TEST_PROGRAMS_NEED_X += test-index-version
 TEST_PROGRAMS_NEED_X += test-line-buffer
 TEST_PROGRAMS_NEED_X += test-match-trees
 TEST_PROGRAMS_NEED_X += test-mktemp
-TEST_PROGRAMS_NEED_X += test-obj-pool
 TEST_PROGRAMS_NEED_X += test-parse-options
 TEST_PROGRAMS_NEED_X += test-path-utils
 TEST_PROGRAMS_NEED_X += test-run-command
 TEST_PROGRAMS_NEED_X += test-sha1
 TEST_PROGRAMS_NEED_X += test-sigchain
-TEST_PROGRAMS_NEED_X += test-string-pool
 TEST_PROGRAMS_NEED_X += test-subprocess
 TEST_PROGRAMS_NEED_X += test-svn-fe
-TEST_PROGRAMS_NEED_X += test-treap
 
 TEST_PROGRAMS = $(patsubst %,%$X,$(TEST_PROGRAMS_NEED_X))
 
@@ -1521,6 +1533,7 @@ ifdef GETTEXT_POISON
 endif
 ifdef NO_GETTEXT
 	BASIC_CFLAGS += -DNO_GETTEXT
+	USE_GETTEXT_SCHEME ?= fallthrough
 endif
 ifdef NO_STRCASESTR
 	COMPAT_CFLAGS += -DNO_STRCASESTR
@@ -1692,6 +1705,7 @@ endif
 
 ifdef HAVE_LIBCHARSET_H
 	BASIC_CFLAGS += -DHAVE_LIBCHARSET_H
+	EXTLIBS += $(CHARSET_LIB)
 endif
 
 ifdef HAVE_DEV_TTY
@@ -1768,6 +1782,26 @@ ifdef ASCIIDOC7
 	export ASCIIDOC7
 endif
 
+### profile feedback build
+#
+
+# Can adjust this to be a global directory if you want to do extended
+# data gathering
+PROFILE_DIR := $(CURDIR)
+
+ifeq ("$(PROFILE)","GEN")
+	CFLAGS += -fprofile-generate=$(PROFILE_DIR) -DNO_NORETURN=1
+	EXTLIBS += -lgcov
+	export CCACHE_DISABLE=t
+	V=1
+else
+ifneq ("$(PROFILE)","")
+	CFLAGS += -fprofile-use=$(PROFILE_DIR) -fprofile-correction -DNO_NORETURN=1
+	export CCACHE_DISABLE=t
+	V=1
+endif
+endif
+
 # Shell quote (do not use $(call) to accommodate ancient setups);
 
 SHA1_HEADER_SQ = $(subst ','\'',$(SHA1_HEADER))
@@ -1824,7 +1858,17 @@ export DIFF TAR INSTALL DESTDIR SHELL_PATH
 
 SHELL = $(SHELL_PATH)
 
-all:: shell_compatibility_test $(ALL_PROGRAMS) $(SCRIPT_LIB) $(BUILT_INS) $(OTHER_PROGRAMS) GIT-BUILD-OPTIONS
+all:: shell_compatibility_test
+
+ifeq "$(PROFILE)" "BUILD"
+ifeq ($(filter all,$(MAKECMDGOALS)),all)
+all:: profile-clean
+	$(MAKE) PROFILE=GEN all
+	$(MAKE) PROFILE=GEN -j1 test
+endif
+endif
+
+all:: $(ALL_PROGRAMS) $(SCRIPT_LIB) $(BUILT_INS) $(OTHER_PROGRAMS) GIT-BUILD-OPTIONS
 ifneq (,$X)
 	$(QUIET_BUILT_IN)$(foreach p,$(patsubst %$X,%,$(filter %$X,$(ALL_PROGRAMS) $(BUILT_INS) git$X)), test -d '$p' -o '$p' -ef '$p$X' || $(RM) '$p';)
 endif
@@ -1887,6 +1931,7 @@ sed -e '1s|#!.*/sh|#!$(SHELL_PATH_SQ)|' \
     -e 's/@@GIT_VERSION@@/$(GIT_VERSION)/g' \
     -e 's|@@LOCALEDIR@@|$(localedir_SQ)|g' \
     -e 's/@@NO_CURL@@/$(NO_CURL)/g' \
+    -e 's/@@USE_GETTEXT_SCHEME@@/$(USE_GETTEXT_SCHEME)/g' \
     -e $(BROKEN_PATH_FIX) \
     $@.sh >$@+
 endef
@@ -1988,12 +2033,24 @@ GIT_OBJS := $(LIB_OBJS) $(BUILTIN_OBJS) $(PROGRAM_OBJS) $(TEST_OBJS) \
 ifndef NO_CURL
 	GIT_OBJS += http.o http-walker.o remote-curl.o
 endif
-XDIFF_OBJS = xdiff/xdiffi.o xdiff/xprepare.o xdiff/xutils.o xdiff/xemit.o \
-	xdiff/xmerge.o xdiff/xpatience.o xdiff/xhistogram.o
-VCSSVN_OBJS = vcs-svn/string_pool.o vcs-svn/line_buffer.o \
-	vcs-svn/repo_tree.o vcs-svn/fast_export.o vcs-svn/svndump.o
-VCSSVN_TEST_OBJS = test-obj-pool.o test-string-pool.o \
-	test-line-buffer.o test-treap.o
+
+XDIFF_OBJS += xdiff/xdiffi.o
+XDIFF_OBJS += xdiff/xprepare.o
+XDIFF_OBJS += xdiff/xutils.o
+XDIFF_OBJS += xdiff/xemit.o
+XDIFF_OBJS += xdiff/xmerge.o
+XDIFF_OBJS += xdiff/xpatience.o
+XDIFF_OBJS += xdiff/xhistogram.o
+
+VCSSVN_OBJS += vcs-svn/line_buffer.o
+VCSSVN_OBJS += vcs-svn/sliding_window.o
+VCSSVN_OBJS += vcs-svn/repo_tree.o
+VCSSVN_OBJS += vcs-svn/fast_export.o
+VCSSVN_OBJS += vcs-svn/svndiff.o
+VCSSVN_OBJS += vcs-svn/svndump.o
+
+VCSSVN_TEST_OBJS += test-line-buffer.o
+
 OBJECTS := $(GIT_OBJS) $(XDIFF_OBJS) $(VCSSVN_OBJS)
 
 dep_files := $(foreach f,$(OBJECTS),$(dir $f).depend/$(notdir $f).d)
@@ -2112,16 +2169,25 @@ connect.o transport.o url.o http-backend.o: url.h
 http-fetch.o http-walker.o remote-curl.o transport.o walker.o: walker.h
 http.o http-walker.o http-push.o http-fetch.o remote-curl.o: http.h url.h
 
-xdiff-interface.o $(XDIFF_OBJS): \
-	xdiff/xinclude.h xdiff/xmacros.h xdiff/xdiff.h xdiff/xtypes.h \
-	xdiff/xutils.h xdiff/xprepare.h xdiff/xdiffi.h xdiff/xemit.h
+XDIFF_H += xdiff/xinclude.h
+XDIFF_H += xdiff/xmacros.h
+XDIFF_H += xdiff/xdiff.h
+XDIFF_H += xdiff/xtypes.h
+XDIFF_H += xdiff/xutils.h
+XDIFF_H += xdiff/xprepare.h
+XDIFF_H += xdiff/xdiffi.h
+XDIFF_H += xdiff/xemit.h
 
-$(VCSSVN_OBJS) $(VCSSVN_TEST_OBJS): $(LIB_H) \
-	vcs-svn/obj_pool.h vcs-svn/trp.h vcs-svn/string_pool.h \
-	vcs-svn/line_buffer.h vcs-svn/repo_tree.h vcs-svn/fast_export.h \
-	vcs-svn/svndump.h
+xdiff-interface.o $(XDIFF_OBJS): $(XDIFF_H)
 
-test-svn-fe.o: vcs-svn/svndump.h
+VCSSVN_H += vcs-svn/line_buffer.h
+VCSSVN_H += vcs-svn/sliding_window.h
+VCSSVN_H += vcs-svn/repo_tree.h
+VCSSVN_H += vcs-svn/fast_export.h
+VCSSVN_H += vcs-svn/svndiff.h
+VCSSVN_H += vcs-svn/svndump.h
+
+$(VCSSVN_OBJS) $(VCSSVN_TEST_OBJS): $(LIB_H) $(VCSSVN_H)
 endif
 
 exec_cmd.sp exec_cmd.s exec_cmd.o: EXTRA_CPPFLAGS = \
@@ -2264,7 +2330,7 @@ cscope:
 ### Detect prefix changes
 TRACK_CFLAGS = $(CC):$(subst ','\'',$(ALL_CFLAGS)):\
              $(bindir_SQ):$(gitexecdir_SQ):$(template_dir_SQ):$(prefix_SQ):\
-             $(localedir_SQ)
+             $(localedir_SQ):$(USE_GETTEXT_SCHEME)
 
 GIT-CFLAGS: FORCE
 	@FLAGS='$(TRACK_CFLAGS)'; \
@@ -2348,8 +2414,6 @@ test-delta$X: diff-delta.o patch-delta.o
 test-line-buffer$X: vcs-svn/lib.a
 
 test-parse-options$X: parse-options.o parse-options-cb.o
-
-test-string-pool$X: vcs-svn/lib.a
 
 test-svn-fe$X: vcs-svn/lib.a
 
@@ -2552,7 +2616,11 @@ distclean: clean
 	$(RM) configure
 	$(RM) po/git.pot
 
-clean:
+profile-clean:
+	$(RM) $(addsuffix *.gcda,$(addprefix $(PROFILE_DIR)/, $(object_dirs)))
+	$(RM) $(addsuffix *.gcno,$(addprefix $(PROFILE_DIR)/, $(object_dirs)))
+
+clean: profile-clean
 	$(RM) *.o block-sha1/*.o ppc/*.o compat/*.o compat/*/*.o xdiff/*.o vcs-svn/*.o \
 		builtin/*.o $(LIB_FILE) $(XDIFF_LIB) $(VCSSVN_LIB)
 	$(RM) $(ALL_PROGRAMS) $(SCRIPT_LIB) $(BUILT_INS) git$X
@@ -2582,7 +2650,7 @@ ifndef NO_TCLTK
 endif
 	$(RM) GIT-VERSION-FILE GIT-CFLAGS GIT-LDFLAGS GIT-GUI-VARS GIT-BUILD-OPTIONS
 
-.PHONY: all install clean strip
+.PHONY: all install profile-clean clean strip
 .PHONY: shell_compatibility_test please_set_SHELL_PATH_to_a_more_modern_shell
 .PHONY: FORCE cscope
 
@@ -2692,18 +2760,3 @@ cover_db: coverage-report
 cover_db_html: cover_db
 	cover -report html -outputdir cover_db_html cover_db
 
-### profile feedback build
-#
-.PHONY: profile-all profile-clean
-
-PROFILE_GEN_CFLAGS := $(CFLAGS) -fprofile-generate -DNO_NORETURN=1
-PROFILE_USE_CFLAGS := $(CFLAGS) -fprofile-use -fprofile-correction -DNO_NORETURN=1
-
-profile-clean:
-	$(RM) $(addsuffix *.gcda,$(object_dirs))
-	$(RM) $(addsuffix *.gcno,$(object_dirs))
-
-profile-all: profile-clean
-	$(MAKE) CFLAGS="$(PROFILE_GEN_CFLAGS)" all
-	$(MAKE) CFLAGS="$(PROFILE_GEN_CFLAGS)" -j1 test
-	$(MAKE) CFLAGS="$(PROFILE_USE_CFLAGS)" all

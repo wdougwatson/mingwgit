@@ -196,16 +196,16 @@ static void determine_whence(struct wt_status *s)
 
 static const char *whence_s(void)
 {
-	char *s = "";
+	const char *s = "";
 
 	switch (whence) {
 	case FROM_COMMIT:
 		break;
 	case FROM_MERGE:
-		s = "merge";
+		s = _("merge");
 		break;
 	case FROM_CHERRY_PICK:
-		s = "cherry-pick";
+		s = _("cherry-pick");
 		break;
 	}
 
@@ -400,7 +400,7 @@ static char *prepare_index(int argc, const char **argv, const char *prefix,
 		fd = hold_locked_index(&index_lock, 1);
 		add_files_to_cache(also ? prefix : NULL, pathspec, 0);
 		refresh_cache_or_die(refresh_flags);
-		update_main_cache_tree(1);
+		update_main_cache_tree(WRITE_TREE_SILENT);
 		if (write_cache(fd, active_cache, active_nr) ||
 		    close_lock_file(&index_lock))
 			die(_("unable to write new_index file"));
@@ -421,7 +421,7 @@ static char *prepare_index(int argc, const char **argv, const char *prefix,
 		fd = hold_locked_index(&index_lock, 1);
 		refresh_cache_or_die(refresh_flags);
 		if (active_cache_changed) {
-			update_main_cache_tree(1);
+			update_main_cache_tree(WRITE_TREE_SILENT);
 			if (write_cache(fd, active_cache, active_nr) ||
 			    commit_locked_index(&index_lock))
 				die(_("unable to write new_index file"));
@@ -543,6 +543,7 @@ static void determine_author_info(struct strbuf *author_ident)
 
 	if (author_message) {
 		const char *a, *lb, *rb, *eol;
+		size_t len;
 
 		a = strstr(author_message_buffer, "\nauthor ");
 		if (!a)
@@ -563,6 +564,11 @@ static void determine_author_info(struct strbuf *author_ident)
 					 (a + strlen("\nauthor "))));
 		email = xmemdupz(lb + strlen("<"), rb - (lb + strlen("<")));
 		date = xmemdupz(rb + strlen("> "), eol - (rb + strlen("> ")));
+		len = eol - (rb + strlen("> "));
+		date = xmalloc(len + 2);
+		*date = '@';
+		memcpy(date + 1, rb + strlen("> "), len);
+		date[len + 1] = '\0';
 	}
 
 	if (force_author) {

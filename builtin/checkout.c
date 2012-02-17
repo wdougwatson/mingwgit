@@ -514,20 +514,6 @@ static void report_tracking(struct branch_info *new)
 	strbuf_release(&sb);
 }
 
-static void detach_advice(const char *old_path, const char *new_name)
-{
-	const char fmt[] =
-	"Note: checking out '%s'.\n\n"
-	"You are in 'detached HEAD' state. You can look around, make experimental\n"
-	"changes and commit them, and you can discard any commits you make in this\n"
-	"state without impacting any branches by performing another checkout.\n\n"
-	"If you want to create a new branch to retain commits you create, you may\n"
-	"do so (now or later) by using -b with the checkout command again. Example:\n\n"
-	"  git checkout -b new_branch_name\n\n";
-
-	fprintf(stderr, fmt, new_name);
-}
-
 static void update_refs_for_switch(struct checkout_opts *opts,
 				   struct branch_info *old,
 				   struct branch_info *new)
@@ -575,7 +561,7 @@ static void update_refs_for_switch(struct checkout_opts *opts,
 			   REF_NODEREF, DIE_ON_ERR);
 		if (!opts->quiet) {
 			if (old->path && advice_detached_head)
-				detach_advice(old->path, new->name);
+				detach_advice(new->name);
 			describe_detached_head(_("HEAD is now at"), new->commit);
 		}
 	} else if (new->path) {	/* Switch branches. */
@@ -922,6 +908,17 @@ static int parse_branchname_arg(int argc, const char **argv,
 	return argcount;
 }
 
+static int switch_unborn_to_new_branch(struct checkout_opts *opts)
+{
+	int status;
+	struct strbuf branch_ref = STRBUF_INIT;
+
+	strbuf_addf(&branch_ref, "refs/heads/%s", opts->new_branch);
+	status = create_symref("HEAD", branch_ref.buf, "checkout -b");
+	strbuf_release(&branch_ref);
+	return status;
+}
+
 int cmd_checkout(int argc, const char **argv, const char *prefix)
 {
 	struct checkout_opts opts;
@@ -1093,5 +1090,13 @@ int cmd_checkout(int argc, const char **argv, const char *prefix)
 	if (opts.writeout_stage)
 		die(_("--ours/--theirs is incompatible with switching branches."));
 
+	if (!new.commit) {
+		unsigned char rev[20];
+		int flag;
+
+		if (!read_ref_full("HEAD", rev, 0, &flag) &&
+		    (flag & REF_ISSYMREF) && is_null_sha1(rev))
+			return switch_unborn_to_new_branch(&opts);
+	}
 	return switch_branches(&opts, &new);
 }
