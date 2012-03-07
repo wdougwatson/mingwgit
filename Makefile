@@ -620,6 +620,7 @@ LIB_H += streaming.h
 LIB_H += string-list.h
 LIB_H += submodule.h
 LIB_H += tag.h
+LIB_H += thread-utils.h
 LIB_H += transport.h
 LIB_H += tree.h
 LIB_H += tree-walk.h
@@ -2634,7 +2635,6 @@ dist-doc:
 
 distclean: clean
 	$(RM) configure
-	$(RM) po/git.pot
 
 profile-clean:
 	$(RM) $(addsuffix *.gcda,$(addprefix $(PROFILE_DIR)/, $(object_dirs)))
