@@ -1715,17 +1715,21 @@ int setup_revisions(int argc, const char **argv, struct rev_info *revs, struct s
 		submodule = opt->submodule;
 
 	/* First, search for "--" */
-	seen_dashdash = 0;
-	for (i = 1; i < argc; i++) {
-		const char *arg = argv[i];
-		if (strcmp(arg, "--"))
-			continue;
-		argv[i] = NULL;
-		argc = i;
-		if (argv[i + 1])
-			append_prune_data(&prune_data, argv + i + 1);
+	if (opt && opt->assume_dashdash) {
 		seen_dashdash = 1;
-		break;
+	} else {
+		seen_dashdash = 0;
+		for (i = 1; i < argc; i++) {
+			const char *arg = argv[i];
+			if (strcmp(arg, "--"))
+				continue;
+			argv[i] = NULL;
+			argc = i;
+			if (argv[i + 1])
+				append_prune_data(&prune_data, argv + i + 1);
+			seen_dashdash = 1;
+			break;
+		}
 	}
 
 	/* Second, deal with arguments and options */
@@ -2062,10 +2066,16 @@ static void set_children(struct rev_info *revs)
 	}
 }
 
+void reset_revision_walk(void)
+{
+	clear_object_flags(SEEN | ADDED | SHOWN);
+}
+
 int prepare_revision_walk(struct rev_info *revs)
 {
 	int nr = revs->pending.nr;
 	struct object_array_entry *e, *list;
+	struct commit_list **next = &revs->commits;
 
 	e = list = revs->pending.objects;
 	revs->pending.nr = 0;
@@ -2076,11 +2086,12 @@ int prepare_revision_walk(struct rev_info *revs)
 		if (commit) {
 			if (!(commit->object.flags & SEEN)) {
 				commit->object.flags |= SEEN;
-				commit_list_insert_by_date(commit, &revs->commits);
+				next = commit_list_append(commit, next);
 			}
 		}
 		e++;
 	}
+	commit_list_sort_by_date(&revs->commits);
 	if (!revs->leak_pending)
 		free(list);
 
