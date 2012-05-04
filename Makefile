@@ -288,6 +288,11 @@ all::
 # dependency rules.
 #
 # Define NATIVE_CRLF if your platform uses CRLF for line endings.
+#
+# Define XDL_FAST_HASH to use an alternative line-hashing method in
+# the diff algorithm.  It gives a nice speedup if your processor has
+# fast unaligned word loads.  Does NOT work on big-endian systems!
+# Enabled by default on x86_64.
 
 GIT-VERSION-FILE: FORCE
 	@$(SHELL_PATH) ./GIT-VERSION-GEN
@@ -386,6 +391,7 @@ XDIFF_OBJS =
 VCSSVN_H =
 VCSSVN_OBJS =
 VCSSVN_TEST_OBJS =
+MISC_H =
 EXTRA_CPPFLAGS =
 LIB_H =
 LIB_OBJS =
@@ -546,6 +552,36 @@ LIB_FILE=libgit.a
 XDIFF_LIB=xdiff/lib.a
 VCSSVN_LIB=vcs-svn/lib.a
 
+XDIFF_H += xdiff/xinclude.h
+XDIFF_H += xdiff/xmacros.h
+XDIFF_H += xdiff/xdiff.h
+XDIFF_H += xdiff/xtypes.h
+XDIFF_H += xdiff/xutils.h
+XDIFF_H += xdiff/xprepare.h
+XDIFF_H += xdiff/xdiffi.h
+XDIFF_H += xdiff/xemit.h
+
+VCSSVN_H += vcs-svn/line_buffer.h
+VCSSVN_H += vcs-svn/sliding_window.h
+VCSSVN_H += vcs-svn/repo_tree.h
+VCSSVN_H += vcs-svn/fast_export.h
+VCSSVN_H += vcs-svn/svndiff.h
+VCSSVN_H += vcs-svn/svndump.h
+
+MISC_H += branch.h
+MISC_H += bundle.h
+MISC_H += bisect.h
+MISC_H += common-cmds.h
+MISC_H += fetch-pack.h
+MISC_H += thread-utils.h
+MISC_H += send-pack.h
+MISC_H += shortlog.h
+MISC_H += reachable.h
+MISC_H += wt-status.h
+MISC_H += tar.h
+MISC_H += url.h
+MISC_H += walker.h
+
 LIB_H += advice.h
 LIB_H += archive.h
 LIB_H += argv-array.h
@@ -631,6 +667,7 @@ LIB_H += tree-walk.h
 LIB_H += unpack-trees.h
 LIB_H += userdiff.h
 LIB_H += utf8.h
+LIB_H += varint.h
 LIB_H += xdiff-interface.h
 LIB_H += xdiff/xdiff.h
 
@@ -651,6 +688,7 @@ LIB_OBJS += bulk-checkin.o
 LIB_OBJS += bundle.o
 LIB_OBJS += cache-tree.o
 LIB_OBJS += color.o
+LIB_OBJS += column.o
 LIB_OBJS += combine-diff.o
 LIB_OBJS += commit.o
 LIB_OBJS += compat/obstack.o
@@ -757,6 +795,7 @@ LIB_OBJS += url.o
 LIB_OBJS += usage.o
 LIB_OBJS += userdiff.o
 LIB_OBJS += utf8.o
+LIB_OBJS += varint.o
 LIB_OBJS += walker.o
 LIB_OBJS += wrapper.o
 LIB_OBJS += write_or_die.o
@@ -780,6 +819,7 @@ BUILTIN_OBJS += builtin/checkout-index.o
 BUILTIN_OBJS += builtin/checkout.o
 BUILTIN_OBJS += builtin/clean.o
 BUILTIN_OBJS += builtin/clone.o
+BUILTIN_OBJS += builtin/column.o
 BUILTIN_OBJS += builtin/commit-tree.o
 BUILTIN_OBJS += builtin/commit.o
 BUILTIN_OBJS += builtin/config.o
@@ -869,6 +909,9 @@ EXTLIBS =
 # because maintaining the nesting to match is a pain.  If
 # we had "elif" things would have been much nicer...
 
+ifeq ($(uname_M),x86_64)
+	XDL_FAST_HASH = YesPlease
+endif
 ifeq ($(uname_S),OSF1)
 	# Need this for u_short definitions et al
 	BASIC_CFLAGS += -D_OSF_SOURCE
@@ -1742,6 +1785,10 @@ ifndef NO_MSGFMT_EXTENDED_OPTIONS
 	MSGFMT += --check --statistics
 endif
 
+ifneq (,$(XDL_FAST_HASH))
+	BASIC_CFLAGS += -DXDL_FAST_HASH
+endif
+
 ifeq ($(TCLTK_PATH),)
 NO_TCLTK=NoThanks
 endif
@@ -2179,26 +2226,11 @@ builtin/prune.o builtin/reflog.o reachable.o: reachable.h
 builtin/commit.o builtin/revert.o wt-status.o: wt-status.h
 builtin/tar-tree.o archive-tar.o: tar.h
 connect.o transport.o url.o http-backend.o: url.h
+builtin/branch.o builtin/commit.o builtin/tag.o column.o help.o pager.o: column.h
 http-fetch.o http-walker.o remote-curl.o transport.o walker.o: walker.h
 http.o http-walker.o http-push.o http-fetch.o remote-curl.o: http.h url.h
 
-XDIFF_H += xdiff/xinclude.h
-XDIFF_H += xdiff/xmacros.h
-XDIFF_H += xdiff/xdiff.h
-XDIFF_H += xdiff/xtypes.h
-XDIFF_H += xdiff/xutils.h
-XDIFF_H += xdiff/xprepare.h
-XDIFF_H += xdiff/xdiffi.h
-XDIFF_H += xdiff/xemit.h
-
 xdiff-interface.o $(XDIFF_OBJS): $(XDIFF_H)
-
-VCSSVN_H += vcs-svn/line_buffer.h
-VCSSVN_H += vcs-svn/sliding_window.h
-VCSSVN_H += vcs-svn/repo_tree.h
-VCSSVN_H += vcs-svn/fast_export.h
-VCSSVN_H += vcs-svn/svndiff.h
-VCSSVN_H += vcs-svn/svndump.h
 
 $(VCSSVN_OBJS) $(VCSSVN_TEST_OBJS): $(LIB_H) $(VCSSVN_H)
 endif
@@ -2296,7 +2328,7 @@ XGETTEXT_FLAGS_C = $(XGETTEXT_FLAGS) --language=C \
 	--keyword=_ --keyword=N_ --keyword="Q_:1,2"
 XGETTEXT_FLAGS_SH = $(XGETTEXT_FLAGS) --language=Shell
 XGETTEXT_FLAGS_PERL = $(XGETTEXT_FLAGS) --keyword=__ --language=Perl
-LOCALIZED_C := $(C_OBJ:o=c)
+LOCALIZED_C := $(C_OBJ:o=c) $(LIB_H) $(XDIFF_H) $(VCSSVN_H) $(MISC_H)
 LOCALIZED_SH := $(SCRIPT_SH)
 LOCALIZED_PERL := $(SCRIPT_PERL)
 

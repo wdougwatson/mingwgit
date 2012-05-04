@@ -27,6 +27,7 @@
 #include "quote.h"
 #include "submodule.h"
 #include "gpg-interface.h"
+#include "column.h"
 
 static const char * const builtin_commit_usage[] = {
 	"git commit [options] [--] <filepattern>...",
@@ -88,6 +89,7 @@ static int quiet, verbose, no_verify, allow_empty, dry_run, renew_authorship;
 static int no_post_rewrite, allow_empty_message;
 static char *untracked_files_arg, *force_date, *ignore_submodule_arg;
 static char *sign_commit;
+static unsigned int colopts;
 
 /*
  * The default commit message cleanup mode will remove the lines
@@ -192,24 +194,6 @@ static void determine_whence(struct wt_status *s)
 		whence = FROM_COMMIT;
 	if (s)
 		s->whence = whence;
-}
-
-static const char *whence_s(void)
-{
-	const char *s = "";
-
-	switch (whence) {
-	case FROM_COMMIT:
-		break;
-	case FROM_MERGE:
-		s = _("merge");
-		break;
-	case FROM_CHERRY_PICK:
-		s = _("cherry-pick");
-		break;
-	}
-
-	return s;
 }
 
 static void rollback_index_files(void)
@@ -453,8 +437,12 @@ static char *prepare_index(int argc, const char **argv, const char *prefix,
 	 */
 	commit_style = COMMIT_PARTIAL;
 
-	if (whence != FROM_COMMIT)
-		die(_("cannot do a partial commit during a %s."), whence_s());
+	if (whence != FROM_COMMIT) {
+		if (whence == FROM_MERGE)
+			die(_("cannot do a partial commit during a merge."));
+		else if (whence == FROM_CHERRY_PICK)
+			die(_("cannot do a partial commit during a cherry-pick."));
+	}
 
 	memset(&partial, 0, sizeof(partial));
 	partial.strdup_strings = 1;
@@ -796,28 +784,31 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 		char *ai_tmp, *ci_tmp;
 		if (whence != FROM_COMMIT)
 			status_printf_ln(s, GIT_COLOR_NORMAL,
-				_("\n"
-				"It looks like you may be committing a %s.\n"
-				"If this is not correct, please remove the file\n"
-				"	%s\n"
-				"and try again.\n"
-				""),
-				whence_s(),
+			    whence == FROM_MERGE
+				? _("\n"
+					"It looks like you may be committing a merge.\n"
+					"If this is not correct, please remove the file\n"
+					"	%s\n"
+					"and try again.\n")
+				: _("\n"
+					"It looks like you may be committing a cherry-pick.\n"
+					"If this is not correct, please remove the file\n"
+					"	%s\n"
+					"and try again.\n"),
 				git_path(whence == FROM_MERGE
 					 ? "MERGE_HEAD"
 					 : "CHERRY_PICK_HEAD"));
 
 		fprintf(s->fp, "\n");
-		status_printf(s, GIT_COLOR_NORMAL,
-			_("Please enter the commit message for your changes."));
 		if (cleanup_mode == CLEANUP_ALL)
-			status_printf_more(s, GIT_COLOR_NORMAL,
-				_(" Lines starting\n"
-				"with '#' will be ignored, and an empty"
+			status_printf(s, GIT_COLOR_NORMAL,
+				_("Please enter the commit message for your changes."
+				" Lines starting\nwith '#' will be ignored, and an empty"
 				" message aborts the commit.\n"));
 		else /* CLEANUP_SPACE, that is. */
-			status_printf_more(s, GIT_COLOR_NORMAL,
-				_(" Lines starting\n"
+			status_printf(s, GIT_COLOR_NORMAL,
+				_("Please enter the commit message for your changes."
+				" Lines starting\n"
 				"with '#' will be kept; you may remove them"
 				" yourself if you want to.\n"
 				"An empty message aborts the commit.\n"));
@@ -1072,8 +1063,12 @@ static int parse_and_validate_options(int argc, const char *argv[],
 	/* Sanity check options */
 	if (amend && !current_head)
 		die(_("You have nothing to amend."));
-	if (amend && whence != FROM_COMMIT)
-		die(_("You are in the middle of a %s -- cannot amend."), whence_s());
+	if (amend && whence != FROM_COMMIT) {
+		if (whence == FROM_MERGE)
+			die(_("You are in the middle of a merge -- cannot amend."));
+		else if (whence == FROM_CHERRY_PICK)
+			die(_("You are in the middle of a cherry-pick -- cannot amend."));
+	}
 	if (fixup_message && squash_message)
 		die(_("Options --squash and --fixup cannot be used together"));
 	if (use_message)
@@ -1180,6 +1175,8 @@ static int git_status_config(const char *k, const char *v, void *cb)
 {
 	struct wt_status *s = cb;
 
+	if (!prefixcmp(k, "column."))
+		return git_column_config(k, v, "status", &colopts);
 	if (!strcmp(k, "status.submodulesummary")) {
 		int is_bool;
 		s->submodule_summary = git_config_bool_or_int(k, v, &is_bool);
@@ -1245,6 +1242,7 @@ int cmd_status(int argc, const char **argv, const char *prefix)
 		{ OPTION_STRING, 0, "ignore-submodules", &ignore_submodule_arg, "when",
 		  "ignore changes to submodules, optional when: all, dirty, untracked. (Default: all)",
 		  PARSE_OPT_OPTARG, NULL, (intptr_t)"all" },
+		OPT_COLUMN(0, "column", &colopts, "list untracked files in columns"),
 		OPT_END(),
 	};
 
@@ -1258,6 +1256,8 @@ int cmd_status(int argc, const char **argv, const char *prefix)
 	argc = parse_options(argc, argv, prefix,
 			     builtin_status_options,
 			     builtin_status_usage, 0);
+	finalize_colopts(&colopts, -1);
+	s.colopts = colopts;
 
 	if (null_termination && status_format == STATUS_FORMAT_LONG)
 		status_format = STATUS_FORMAT_PORCELAIN;
