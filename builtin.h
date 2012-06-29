@@ -9,7 +9,6 @@
 
 #define DEFAULT_MERGE_LOG_LEN 20
 
-extern const char git_version_string[];
 extern const char git_usage_string[];
 extern const char git_more_info_string[];
 
@@ -41,6 +40,8 @@ int copy_note_for_rewrite(struct notes_rewrite_cfg *c,
 void finish_copy_notes_for_rewrite(struct notes_rewrite_cfg *c);
 
 extern int check_pager_config(const char *cmd);
+struct diff_options;
+extern void setup_diff_pager(struct diff_options *);
 
 extern int textconv_object(const char *path, unsigned mode, const unsigned char *sha1, char **buf, unsigned long *buf_size);
 
@@ -83,7 +84,6 @@ extern int cmd_get_tar_commit_id(int argc, const char **argv, const char *prefix
 extern int cmd_grep(int argc, const char **argv, const char *prefix);
 extern int cmd_hash_object(int argc, const char **argv, const char *prefix);
 extern int cmd_help(int argc, const char **argv, const char *prefix);
-extern int cmd_http_fetch(int argc, const char **argv, const char *prefix);
 extern int cmd_index_pack(int argc, const char **argv, const char *prefix);
 extern int cmd_init_db(int argc, const char **argv, const char *prefix);
 extern int cmd_log(int argc, const char **argv, const char *prefix);
@@ -108,7 +108,6 @@ extern int cmd_notes(int argc, const char **argv, const char *prefix);
 extern int cmd_pack_objects(int argc, const char **argv, const char *prefix);
 extern int cmd_pack_redundant(int argc, const char **argv, const char *prefix);
 extern int cmd_patch_id(int argc, const char **argv, const char *prefix);
-extern int cmd_pickaxe(int argc, const char **argv, const char *prefix);
 extern int cmd_prune(int argc, const char **argv, const char *prefix);
 extern int cmd_prune_packed(int argc, const char **argv, const char *prefix);
 extern int cmd_push(int argc, const char **argv, const char *prefix);
@@ -141,7 +140,6 @@ extern int cmd_update_ref(int argc, const char **argv, const char *prefix);
 extern int cmd_update_server_info(int argc, const char **argv, const char *prefix);
 extern int cmd_upload_archive(int argc, const char **argv, const char *prefix);
 extern int cmd_upload_archive_writer(int argc, const char **argv, const char *prefix);
-extern int cmd_upload_tar(int argc, const char **argv, const char *prefix);
 extern int cmd_var(int argc, const char **argv, const char *prefix);
 extern int cmd_verify_tag(int argc, const char **argv, const char *prefix);
 extern int cmd_version(int argc, const char **argv, const char *prefix);
