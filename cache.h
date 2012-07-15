@@ -413,6 +413,7 @@ extern void verify_filename(const char *prefix,
 			    const char *name,
 			    int diagnose_misspelt_rev);
 extern void verify_non_filename(const char *prefix, const char *name);
+extern int path_inside_repo(const char *prefix, const char *path);
 
 #define INIT_DB_QUIET 0x0001
 
@@ -562,6 +563,7 @@ extern int read_replace_refs;
 extern int fsync_object_files;
 extern int core_preload_index;
 extern int core_apply_sparse_checkout;
+extern int precomposed_unicode;
 
 enum branch_track {
 	BRANCH_TRACK_UNSPECIFIED = -1,
@@ -620,6 +622,8 @@ extern char *mksnpath(char *buf, size_t n, const char *fmt, ...)
 extern char *git_snpath(char *buf, size_t n, const char *fmt, ...)
 	__attribute__((format (printf, 3, 4)));
 extern char *git_pathdup(const char *fmt, ...)
+	__attribute__((format (printf, 1, 2)));
+extern char *mkpathdup(const char *fmt, ...)
 	__attribute__((format (printf, 1, 2)));
 
 /* Return a statically allocated filename matching the sha1 signature */
@@ -710,6 +714,7 @@ int set_shared_perm(const char *path, int mode);
 int safe_create_leading_directories(char *path);
 int safe_create_leading_directories_const(const char *path);
 int mkdir_in_gitdir(const char *path);
+extern void home_config_paths(char **global, char **xdg, char *file);
 extern char *expand_user_path(const char *path);
 const char *enter_repo(const char *path, int strict);
 static inline int is_absolute_path(const char *path)

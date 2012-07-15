@@ -6,6 +6,25 @@ Updates since v1.7.11
 
 UI, Workflows & Features
 
+ * Git can be told to normalize pathnames it read from readdir(3) and
+   all arguments it got from the command line into precomposed UTF-8
+   (assuming that they come as decomposed UTF-8), in order to work
+   around issues on Mac OS.
+
+   I think there still are other places that need conversion
+   (e.g. paths that are read from stdin for some commands), but this
+   should be a good first step in the right direction.
+
+ * Per-user $HOME/.gitconfig file can optionally be stored in
+   $HOME/.config/git/config instead, which is in line with XDG.
+
+ * The value of core.attributesfile and core.excludesfile default to
+   $HOME/.config/attributes and $HOME/.config/ignore respectively when
+   these files exist.
+
+ * Scripted Porcelain writers now have access to the credential API via
+   the "git credential" plumbing command.
+
  * "git help" used to always default to "man" format even on platforms
    where "man" viewer is not widely available.
 
@@ -16,9 +35,21 @@ UI, Workflows & Features
    turn this off, as a more explicit alternative over use of file://
    URL.
 
+ * "git fetch" and friends used to say "remote side hung up
+   unexpectedly" when they failed to get response they expect from the
+   other side, but one common reason why they don't get expected
+   response is that the remote repository does not exist or cannot be
+   read. The error message in this case was updated to give better
+   hints to the user.
+
  * git native protocol agents learned to show software version over
    the wire, so that the server log can be examined to see the vintage
    distribution of clients.
+
+ * "git help -w $cmd" can show HTML version of documentation for
+   "git-$cmd" by setting help.htmlpath to somewhere other than the
+   default location where the build procedure installs them locally;
+   the variable can even point at a http:// URL.
 
  * "git rebase -i" learned "-x <cmd>" to insert "exec <cmd>" after
    each commit in the resulting history.
@@ -37,6 +68,12 @@ UI, Workflows & Features
 
 Foreign Interface
 
+ * "mediawiki" remote helper (in contrib/) learned to handle file
+   attachments.
+
+ * vcs-svn has been updated to clean-up compilation, lift 32-bit
+   limitations, etc.
+
 
 Performance, Internal Implementation, etc. (please report possible regressions)
 
@@ -44,6 +81,11 @@ Performance, Internal Implementation, etc. (please report possible regressions)
 
  * We no longer use AsciiDoc7 syntax in our documentation and favor a
    more modern style.
+
+ * "git am --rebasing" codepath was taught to grab authorship, log
+   message and the patch text directly out of existing commits.  This
+   will help rebasing commits that have confusing "diff" output in
+   their log messages.
 
  * "git index-pack" and "git pack-objects" use streaming API to read
    from the object store to avoid having to hold a large blob object
@@ -64,45 +106,33 @@ Unless otherwise noted, all the fixes since v1.7.11 in the maintenance
 releases are contained in this release (see release notes to them for
 details).
 
- * When "git log" gets "--simplify-merges/by-decoration" together with
-   "--first-parent", the combination of these options makes the
-   simplification logic to use in-core commit objects that haven't
-   been examined for relevance, either producing incorrect result or
-   taking too long to produce any output.  Teach the simplification
-   logic to ignore commits that the first-parent traversal logic
-   ignored when both are in effect to work around the issue.
-   (merge 6e513ba jc/rev-list-simplify-merges-first-parent later to maint).
+ * "git show"'s auto-walking behaviour was an unreliable and
+   unpredictable hack; it now behaves just like "git log" does when it
+   walks.
+   (merge c5941f1 tr/maint-show-walk later to maint).
 
- * "git add" allows adding a regular file to the path where a
-   submodule used to exist, but "git update-index" does not allow an
-   equivalent operation to Porcelain writers.
-   (merge 242f55f hv/submodule-update-nuke-submodules later to maint).
+ * "git diff", "git status" and anything that internally uses the
+   comparison machinery was utterly broken when the difference
+   involved a file with "-" as its name.  This was due to the way "git
+   diff --no-index" was incorrectly bolted on to the system, making
+   any comparison that involves a file "-" at the root level
+   incorrectly read from the standard input.
+   (merge 4682d85 jc/refactor-diff-stdin later to maint).
 
- * "git diff --no-index" did not work with pagers correctly.
-   (merge af63b54 jk/diff-no-index-pager later to maint).
+ * We did not have test to make sure "git rebase" without extra options
+   filters out an empty commit in the original history.
+   (merge 2b5ba7b mz/empty-rebase-test later to maint).
 
- * "git diff COPYING HEAD:COPYING" gave a nonsense error message that
-   claimed that the treeish HEAD did not have COPYING in it.
-   (merge 023e37c mm/verify-filename-fix later to maint).
+ * "git fast-export" produced an input stream for fast-import without
+   properly quoting pathnames when they contain SPs in them.
+   (merge ff59f6d js/fast-export-paths-with-spaces later to maint).
 
- * The documentation for "git cherry-pick A B..C" was misleading.
-   (merge b98878e cn/cherry-pick-range-docs later to maint).
+ * "git checkout --detach", when you are still on an unborn branch,
+   should be forbidden, but it wasn't.
+   (merge 8ced1aa cw/no-detaching-an-unborn later to maint).
 
- * "git archive" incorrectly computed the header checksum; the symptom
-   was observed only when using pathnames with hi-bit set.
-   (merge a5a46eb jc/ustar-checksum-is-unsigned later to maint).
-
- * Running "git bundle verify" on a bundle that records a complete
-   history said "it requires these 0 commits".
-   (merge 8c3710f jc/bundle-complete-notice later to maint).
-
- * "git ls-files --exclude=t -i" did not consider anything under t/ as
-   excluded, as it did not pay attention to exclusion of leading paths
-   while walking the index.  Other two users of excluded() are also
-   updated.
-   (merge 0d316f0 jc/ls-files-i-dir later to maint).
-
- * "git request-pull $url dev" when the tip of "dev" branch was tagged
-   with "ext4-for-linus" used the contents from the tag in the output
-   but still asked the "dev" branch to be pulled, not the tag.
-   (merge 682853e jc/request-pull-match-tagname later to maint).
+ * Some implementations of Perl terminates "lines" with CRLF even when
+   the script is operating on just a sequence of bytes.  Make sure to
+   use "$PERL_PATH", the version of Perl the user told Git to use, in
+   our tests to avoid unnecessary breakages in tests.
+   (merge ad78585 vr/use-our-perl-in-tests later to maint).
