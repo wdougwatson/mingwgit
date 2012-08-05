@@ -858,7 +858,7 @@ test_expect_success 'rebase -ix with --autosquash' '
 test_expect_success 'rebase --exec without -i shows error message' '
 	git reset --hard execute &&
 	test_must_fail git rebase --exec "git show HEAD" HEAD~2 2>actual &&
-	echo "--exec option must be used with --interactive option" >expected &&
+	echo "The --exec option must be used with the --interactive option" >expected &&
 	test_i18ncmp expected actual
 '
 
@@ -901,6 +901,14 @@ test_expect_success 'rebase -i --root temporary sentinel commit' '
 	) &&
 	git cat-file commit HEAD | grep "^tree 4b825dc642cb" &&
 	git rebase --abort
+'
+
+test_expect_success 'rebase -i --root fixup root commit' '
+	git checkout B &&
+	FAKE_LINES="1 fixup 2" git rebase -i --root &&
+	test A = $(git cat-file commit HEAD | sed -ne \$p) &&
+	test B = $(git show HEAD:file1) &&
+	test 0 = $(git cat-file commit HEAD | grep -c ^parent\ )
 '
 
 test_done
