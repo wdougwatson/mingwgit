@@ -51,10 +51,6 @@ UI, Workflows & Features
    read. The error message in this case was updated to give better
    hints to the user.
 
- * git native protocol agents learned to show software version over
-   the wire, so that the server log can be examined to see the vintage
-   distribution of clients.
-
  * "git help -w $cmd" can show HTML version of documentation for
    "git-$cmd" by setting help.htmlpath to somewhere other than the
    default location where the build procedure installs them locally;
@@ -120,6 +116,7 @@ Performance, Internal Implementation, etc. (please report possible regressions)
  * "git svn" got a large-looking code reorganization at the last
    minute before the code freeze.
 
+
 Also contains minor documentation updates and code clean-ups.
 
 
@@ -130,32 +127,9 @@ Unless otherwise noted, all the fixes since v1.7.11 in the maintenance
 releases are contained in this release (see release notes to them for
 details).
 
- * "git grep" stopped spawning an external "grep" long time ago, but a
-   duplicated test to check internal and external "grep" was left
-   behind.
-   (merge 4ca9453 rj/maint-grep-remove-redundant-test later to maint).
-
- * The code to avoid mistaken attempt to add the object directory
-   itself as its own alternate could read beyond end of a string while
-   comparison.
-   (merge cb2912c hv/link-alt-odb-entry later to maint).
-
- * "git checkout <branchname>" to come back from a detached HEAD state
-   incorrectly computed reachability of the detached HEAD, resulting
-   in unnecessary warnings.
-   (merge add416a jk/maint-checkout-orphan-check-fix later to maint).
-
- * The documentation for revision range specifiers (e.g. A..B, A^@)
-   has been updated.
-   (merge ca5ee2d mh/maint-revisions-doc later to maint).
-
  * "git submodule add" was confused when the superproject did not have
    its repository in its usual place in the working tree and GIT_DIR
    and GIT_WORK_TREE was used to access it.
-
- * "git mergetool" did not support --tool-help option to give the list
-   of supported backends, like "git difftool" does.
-   (merge 109859e jc/mergetool-tool-help later to maint).
 
  * "git commit --amend" let the user edit the log message and then died
    when the human-readable committer name was given insufficiently by
