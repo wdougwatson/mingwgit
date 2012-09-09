@@ -17,12 +17,13 @@
 #include "revision.h"
 #include "string-list.h"
 #include "column.h"
+#include "utf8.h"
 
 static const char * const builtin_branch_usage[] = {
-	"git branch [options] [-r | -a] [--merged | --no-merged]",
-	"git branch [options] [-l] [-f] <branchname> [<start-point>]",
-	"git branch [options] [-r] (-d | -D) <branchname>...",
-	"git branch [options] (-m | -M) [<oldbranch>] <newbranch>",
+	N_("git branch [options] [-r | -a] [--merged | --no-merged]"),
+	N_("git branch [options] [-l] [-f] <branchname> [<start-point>]"),
+	N_("git branch [options] [-r] (-d | -D) <branchname>..."),
+	N_("git branch [options] (-m | -M) [<oldbranch>] <newbranch>"),
 	NULL
 };
 
@@ -249,7 +250,7 @@ static int delete_branches(int argc, const char **argv, int force, int kinds,
 struct ref_item {
 	char *name;
 	char *dest;
-	unsigned int kind, len;
+	unsigned int kind, width;
 	struct commit *commit;
 };
 
@@ -354,14 +355,14 @@ static int append_ref(const char *refname, const unsigned char *sha1, int flags,
 	newitem->name = xstrdup(refname);
 	newitem->kind = kind;
 	newitem->commit = commit;
-	newitem->len = strlen(refname);
+	newitem->width = utf8_strwidth(refname);
 	newitem->dest = resolve_symref(orig_refname, prefix);
 	/* adjust for "remotes/" */
 	if (newitem->kind == REF_REMOTE_BRANCH &&
 	    ref_list->kinds != REF_REMOTE_BRANCH)
-		newitem->len += 8;
-	if (newitem->len > ref_list->maxwidth)
-		ref_list->maxwidth = newitem->len;
+		newitem->width += 8;
+	if (newitem->width > ref_list->maxwidth)
+		ref_list->maxwidth = newitem->width;
 
 	return 0;
 }
@@ -490,11 +491,12 @@ static void print_ref_item(struct ref_item *item, int maxwidth, int verbose,
 	}
 
 	strbuf_addf(&name, "%s%s", prefix, item->name);
-	if (verbose)
+	if (verbose) {
+		int utf8_compensation = strlen(name.buf) - utf8_strwidth(name.buf);
 		strbuf_addf(&out, "%c %s%-*s%s", c, branch_get_color(color),
-			    maxwidth, name.buf,
+			    maxwidth + utf8_compensation, name.buf,
 			    branch_get_color(BRANCH_COLOR_RESET));
-	else
+	} else
 		strbuf_addf(&out, "%c %s%s%s", c, branch_get_color(color),
 			    name.buf, branch_get_color(BRANCH_COLOR_RESET));
 
@@ -519,8 +521,8 @@ static int calc_maxwidth(struct ref_list *refs)
 	for (i = 0; i < refs->index; i++) {
 		if (!matches_merge_filter(refs->list[i].commit))
 			continue;
-		if (refs->list[i].len > w)
-			w = refs->list[i].len;
+		if (refs->list[i].width > w)
+			w = refs->list[i].width;
 	}
 	return w;
 }
@@ -533,12 +535,12 @@ static void show_detached(struct ref_list *ref_list)
 	if (head_commit && is_descendant_of(head_commit, ref_list->with_commit)) {
 		struct ref_item item;
 		item.name = xstrdup(_("(no branch)"));
-		item.len = strlen(item.name);
+		item.width = utf8_strwidth(item.name);
 		item.kind = REF_LOCAL_BRANCH;
 		item.dest = NULL;
 		item.commit = head_commit;
-		if (item.len > ref_list->maxwidth)
-			ref_list->maxwidth = item.len;
+		if (item.width > ref_list->maxwidth)
+			ref_list->maxwidth = item.width;
 		print_ref_item(&item, ref_list->maxwidth, ref_list->verbose, ref_list->abbrev, 1, "");
 		free(item.name);
 	}
@@ -718,56 +720,56 @@ int cmd_branch(int argc, const char **argv, const char *prefix)
 	struct commit_list *with_commit = NULL;
 
 	struct option options[] = {
-		OPT_GROUP("Generic options"),
+		OPT_GROUP(N_("Generic options")),
 		OPT__VERBOSE(&verbose,
-			"show hash and subject, give twice for upstream branch"),
-		OPT__QUIET(&quiet, "suppress informational messages"),
-		OPT_SET_INT('t', "track",  &track, "set up tracking mode (see git-pull(1))",
+			N_("show hash and subject, give twice for upstream branch")),
+		OPT__QUIET(&quiet, N_("suppress informational messages")),
+		OPT_SET_INT('t', "track",  &track, N_("set up tracking mode (see git-pull(1))"),
 			BRANCH_TRACK_EXPLICIT),
-		OPT_SET_INT( 0, "set-upstream",  &track, "change upstream info",
+		OPT_SET_INT( 0, "set-upstream",  &track, N_("change upstream info"),
 			BRANCH_TRACK_OVERRIDE),
-		OPT__COLOR(&branch_use_color, "use colored output"),
-		OPT_SET_INT('r', "remotes",     &kinds, "act on remote-tracking branches",
+		OPT__COLOR(&branch_use_color, N_("use colored output")),
+		OPT_SET_INT('r', "remotes",     &kinds, N_("act on remote-tracking branches"),
 			REF_REMOTE_BRANCH),
 		{
-			OPTION_CALLBACK, 0, "contains", &with_commit, "commit",
-			"print only branches that contain the commit",
+			OPTION_CALLBACK, 0, "contains", &with_commit, N_("commit"),
+			N_("print only branches that contain the commit"),
 			PARSE_OPT_LASTARG_DEFAULT,
 			parse_opt_with_commit, (intptr_t)"HEAD",
 		},
 		{
-			OPTION_CALLBACK, 0, "with", &with_commit, "commit",
-			"print only branches that contain the commit",
+			OPTION_CALLBACK, 0, "with", &with_commit, N_("commit"),
+			N_("print only branches that contain the commit"),
 			PARSE_OPT_HIDDEN | PARSE_OPT_LASTARG_DEFAULT,
 			parse_opt_with_commit, (intptr_t) "HEAD",
 		},
 		OPT__ABBREV(&abbrev),
 
-		OPT_GROUP("Specific git-branch actions:"),
-		OPT_SET_INT('a', "all", &kinds, "list both remote-tracking and local branches",
+		OPT_GROUP(N_("Specific git-branch actions:")),
+		OPT_SET_INT('a', "all", &kinds, N_("list both remote-tracking and local branches"),
 			REF_REMOTE_BRANCH | REF_LOCAL_BRANCH),
-		OPT_BIT('d', "delete", &delete, "delete fully merged branch", 1),
-		OPT_BIT('D', NULL, &delete, "delete branch (even if not merged)", 2),
-		OPT_BIT('m', "move", &rename, "move/rename a branch and its reflog", 1),
-		OPT_BIT('M', NULL, &rename, "move/rename a branch, even if target exists", 2),
-		OPT_BOOLEAN(0, "list", &list, "list branch names"),
-		OPT_BOOLEAN('l', "create-reflog", &reflog, "create the branch's reflog"),
+		OPT_BIT('d', "delete", &delete, N_("delete fully merged branch"), 1),
+		OPT_BIT('D', NULL, &delete, N_("delete branch (even if not merged)"), 2),
+		OPT_BIT('m', "move", &rename, N_("move/rename a branch and its reflog"), 1),
+		OPT_BIT('M', NULL, &rename, N_("move/rename a branch, even if target exists"), 2),
+		OPT_BOOLEAN(0, "list", &list, N_("list branch names")),
+		OPT_BOOLEAN('l', "create-reflog", &reflog, N_("create the branch's reflog")),
 		OPT_BOOLEAN(0, "edit-description", &edit_description,
-			    "edit the description for the branch"),
-		OPT__FORCE(&force_create, "force creation (when already exists)"),
+			    N_("edit the description for the branch")),
+		OPT__FORCE(&force_create, N_("force creation (when already exists)")),
 		{
 			OPTION_CALLBACK, 0, "no-merged", &merge_filter_ref,
-			"commit", "print only not merged branches",
+			N_("commit"), N_("print only not merged branches"),
 			PARSE_OPT_LASTARG_DEFAULT | PARSE_OPT_NONEG,
 			opt_parse_merge_filter, (intptr_t) "HEAD",
 		},
 		{
 			OPTION_CALLBACK, 0, "merged", &merge_filter_ref,
-			"commit", "print only merged branches",
+			N_("commit"), N_("print only merged branches"),
 			PARSE_OPT_LASTARG_DEFAULT | PARSE_OPT_NONEG,
 			opt_parse_merge_filter, (intptr_t) "HEAD",
 		},
-		OPT_COLUMN(0, "column", &colopts, "list branches in columns"),
+		OPT_COLUMN(0, "column", &colopts, N_("list branches in columns")),
 		OPT_END(),
 	};
 

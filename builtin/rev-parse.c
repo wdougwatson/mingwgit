@@ -230,6 +230,7 @@ static int try_difference(const char *arg)
 	const char *next;
 	const char *this;
 	int symmetric;
+	static const char head_by_default[] = "HEAD";
 
 	if (!(dotdot = strstr(arg, "..")))
 		return 0;
@@ -241,9 +242,20 @@ static int try_difference(const char *arg)
 	next += symmetric;
 
 	if (!*next)
-		next = "HEAD";
+		next = head_by_default;
 	if (dotdot == arg)
-		this = "HEAD";
+		this = head_by_default;
+
+	if (this == head_by_default && next == head_by_default &&
+	    !symmetric) {
+		/*
+		 * Just ".."?  That is not a range but the
+		 * pathspec for the parent directory.
+		 */
+		*dotdot = '.';
+		return 0;
+	}
+
 	if (!get_sha1_committish(this, sha1) && !get_sha1_committish(next, end)) {
 		show_rev(NORMAL, end, next);
 		show_rev(symmetric ? NORMAL : REVERSED, sha1, this);
@@ -324,15 +336,15 @@ static int cmd_parseopt(int argc, const char **argv, const char *prefix)
 {
 	static int keep_dashdash = 0, stop_at_non_option = 0;
 	static char const * const parseopt_usage[] = {
-		"git rev-parse --parseopt [options] -- [<args>...]",
+		N_("git rev-parse --parseopt [options] -- [<args>...]"),
 		NULL
 	};
 	static struct option parseopt_opts[] = {
 		OPT_BOOLEAN(0, "keep-dashdash", &keep_dashdash,
-					"keep the `--` passed as an arg"),
+					N_("keep the `--` passed as an arg")),
 		OPT_BOOLEAN(0, "stop-at-non-option", &stop_at_non_option,
-					"stop parsing after the "
-					"first non-option argument"),
+					N_("stop parsing after the "
+					   "first non-option argument")),
 		OPT_END(),
 	};
 
@@ -449,11 +461,11 @@ static void die_no_single_rev(int quiet)
 }
 
 static const char builtin_rev_parse_usage[] =
-"git rev-parse --parseopt [options] -- [<args>...]\n"
-"   or: git rev-parse --sq-quote [<arg>...]\n"
-"   or: git rev-parse [options] [<arg>...]\n"
-"\n"
-"Run \"git rev-parse --parseopt -h\" for more information on the first usage.";
+N_("git rev-parse --parseopt [options] -- [<args>...]\n"
+   "   or: git rev-parse --sq-quote [<arg>...]\n"
+   "   or: git rev-parse [options] [<arg>...]\n"
+   "\n"
+   "Run \"git rev-parse --parseopt -h\" for more information on the first usage.");
 
 int cmd_rev_parse(int argc, const char **argv, const char *prefix)
 {
