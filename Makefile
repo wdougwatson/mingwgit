@@ -90,6 +90,8 @@ all::
 #
 # Define NO_MKDTEMP if you don't have mkdtemp in the C library.
 #
+# Define MKDIR_WO_TRAILING_SLASH if your mkdir() can't deal with trailing slash.
+#
 # Define NO_MKSTEMPS if you don't have mkstemps in the C library.
 #
 # Define NO_STRTOK_R if you don't have strtok_r in the C library.
@@ -156,6 +158,11 @@ all::
 #
 # Define NO_PREAD if you have a problem with pread() system call (e.g.
 # cygwin1.dll before v1.5.22).
+#
+# Define NO_SETITIMER if you don't have setitimer()
+#
+# Define NO_STRUCT_ITIMERVAL if you don't have struct itimerval
+# This also implies NO_SETITIMER
 #
 # Define NO_THREAD_SAFE_PREAD if your pread() implementation is not
 # thread-safe. (e.g. compat/pread.c or cygwin)
@@ -496,6 +503,7 @@ TEST_PROGRAMS_NEED_X += test-mergesort
 TEST_PROGRAMS_NEED_X += test-mktemp
 TEST_PROGRAMS_NEED_X += test-parse-options
 TEST_PROGRAMS_NEED_X += test-path-utils
+TEST_PROGRAMS_NEED_X += test-regex
 TEST_PROGRAMS_NEED_X += test-revision-walking
 TEST_PROGRAMS_NEED_X += test-run-command
 TEST_PROGRAMS_NEED_X += test-scrap-cache-tree
@@ -1639,6 +1647,10 @@ ifdef NO_MKDTEMP
 	COMPAT_CFLAGS += -DNO_MKDTEMP
 	COMPAT_OBJS += compat/mkdtemp.o
 endif
+ifdef MKDIR_WO_TRAILING_SLASH
+	COMPAT_CFLAGS += -DMKDIR_WO_TRAILING_SLASH
+	COMPAT_OBJS += compat/mkdir.o
+endif
 ifdef NO_MKSTEMPS
 	COMPAT_CFLAGS += -DNO_MKSTEMPS
 endif
@@ -1669,6 +1681,13 @@ else
 endif
 ifdef OBJECT_CREATION_USES_RENAMES
 	COMPAT_CFLAGS += -DOBJECT_CREATION_MODE=1
+endif
+ifdef NO_STRUCT_ITIMERVAL
+	COMPAT_CFLAGS += -DNO_STRUCT_ITIMERVAL
+	NO_SETITIMER=YesPlease
+endif
+ifdef NO_SETITIMER
+	COMPAT_CFLAGS += -DNO_SETITIMER
 endif
 ifdef NO_PREAD
 	COMPAT_CFLAGS += -DNO_PREAD

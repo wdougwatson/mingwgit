@@ -109,9 +109,9 @@ static void cmd_log_init_finish(int argc, const char **argv, const char *prefix,
 			     PARSE_OPT_KEEP_ARGV0 | PARSE_OPT_KEEP_UNKNOWN |
 			     PARSE_OPT_KEEP_DASHDASH);
 
-	argc = setup_revisions(argc, argv, rev, opt);
 	if (quiet)
 		rev->diffopt.output_format |= DIFF_FORMAT_NO_OUTPUT;
+	argc = setup_revisions(argc, argv, rev, opt);
 
 	/* Any arguments at this point are not recognized */
 	if (argc > 1)
@@ -456,7 +456,7 @@ int cmd_show(int argc, const char **argv, const char *prefix)
 	init_revisions(&rev, prefix);
 	rev.diff = 1;
 	rev.always_show_header = 1;
-	rev.no_walk = 1;
+	rev.no_walk = REVISION_WALK_NO_WALK_SORTED;
 	rev.diffopt.stat_width = -1; 	/* Scale to real terminal size */
 
 	memset(&opt, 0, sizeof(opt));
