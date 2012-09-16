@@ -31,6 +31,10 @@ UI, Workflows & Features
  * A credential helper to allow access to the Gnome keyring has been
    added.
 
+ * When "git am" sanitizes the Subject: line, we strip the prefix from
+   "Re: subject" and also from a less common "re: subject", but left
+   even less common "RE: subject" intact.
+
  * It was tempting to say "git branch --set-upstream origin/master",
    but that tells Git to arrange the local branch "origin/master" to
    integrate with the currently checked out branch, which is highly
@@ -53,6 +57,9 @@ UI, Workflows & Features
 
  * "git merge-base" learned "--is-ancestor A B" option to tell if A is
    an ancestor of B.  The result is indicated by its exit status code.
+
+ * The "-Xours" backend option to "git merge -s recursive" now takes
+   effect even on binary files.
 
 
 Foreign Interface
@@ -79,6 +86,13 @@ Performance, Internal Implementation, etc. (please report possible regressions)
  * Compatibility wrapper for systems that lack usable setitimer() has
    been added.
 
+ * The option parsing of "git checkout" had error checking, dwim and
+   defaulting missing options, all mixed in the code, and issuing an
+   appropriate error message with useful context was getting harder.
+   The code has been reorganized to allow giving a proper diagnosis
+   when the user says "git checkout -b -t foo bar" (e.g. "-t" is not a
+   good name for a branch).
+
  * Many internal uses of "git merge-base" equivalent were only to see
    if one commit fast-forwards to the other, which did not need the
    full set of merge bases to be computed. They have been updated to
@@ -101,6 +115,12 @@ Fixes since v1.7.12
 Unless otherwise noted, all the fixes since v1.7.12 in the
 maintenance track are contained in this release (see release notes
 to them for details).
+
+ * "git fetch --all", when passed "--no-tags", did not honor the
+   "--no-tags" option while fetching from individual remotes (the same
+   issue existed with "--tags", but combination "--all --tags" makes
+   much less sense than "--all --no-tags").
+   (merge 8556646 dj/fetch-all-tags later to maint).
 
  * The subcommand in "git remote" to remove a defined remote was
    "rm" and the command did not take a fully-spelled "remove".
