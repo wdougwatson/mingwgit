@@ -145,6 +145,12 @@ all::
 #
 # Define NEEDS_LIBICONV if linking with libc is not enough (Darwin).
 #
+# Define NEEDS_LIBINTL_BEFORE_LIBICONV if you need libintl before libiconv.
+#
+# Define NO_INTPTR_T if you don't have intptr_t nor uintptr_t.
+#
+# Define NO_UINTMAX_T if you don't have uintmax_t.
+#
 # Define NEEDS_SOCKET if linking with libc is not enough (SunOS,
 # Patrick Mauritz).
 #
@@ -153,6 +159,11 @@ all::
 # inet_ntop and inet_pton additionally reside there.
 #
 # Define NO_MMAP if you want to avoid mmap.
+#
+# Define NO_SYS_POLL_H if you don't have sys/poll.h.
+#
+# Define NO_POLL if you do not have or don't want to use poll().
+# This also implies NO_SYS_POLL_H.
 #
 # Define NO_PTHREADS if you do not have or do not want to use Pthreads.
 #
@@ -604,10 +615,10 @@ LIB_H += compat/bswap.h
 LIB_H += compat/cygwin.h
 LIB_H += compat/mingw.h
 LIB_H += compat/obstack.h
+LIB_H += compat/poll/poll.h
 LIB_H += compat/precompose_utf8.h
 LIB_H += compat/terminal.h
 LIB_H += compat/win32/dirent.h
-LIB_H += compat/win32/poll.h
 LIB_H += compat/win32/pthread.h
 LIB_H += compat/win32/syslog.h
 LIB_H += connected.h
@@ -1225,7 +1236,7 @@ ifeq ($(uname_S),Windows)
 	NO_PREAD = YesPlease
 	NEEDS_CRYPTO_WITH_SSL = YesPlease
 	NO_LIBGEN_H = YesPlease
-	NO_SYS_POLL_H = YesPlease
+	NO_POLL = YesPlease
 	NO_SYMLINK_HEAD = YesPlease
 	NO_IPV6 = YesPlease
 	NO_UNIX_SOCKETS = YesPlease
@@ -1266,7 +1277,7 @@ ifeq ($(uname_S),Windows)
 	BASIC_CFLAGS = -nologo -I. -I../zlib -Icompat/vcbuild -Icompat/vcbuild/include -DWIN32 -D_CONSOLE -DHAVE_STRING_H -D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_DEPRECATE
 	COMPAT_OBJS = compat/msvc.o compat/winansi.o \
 		compat/win32/pthread.o compat/win32/syslog.o \
-		compat/win32/poll.o compat/win32/dirent.o
+		compat/win32/dirent.o
 	COMPAT_CFLAGS = -D__USE_MINGW_ACCESS -DNOGDI -DHAVE_STRING_H -DHAVE_ALLOCA_H -Icompat -Icompat/regex -Icompat/win32 -DSTRIP_EXTENSION=\".exe\"
 	BASIC_LDFLAGS = -IGNORE:4217 -IGNORE:4049 -NOLOGO -SUBSYSTEM:CONSOLE -NODEFAULTLIB:MSVCRT.lib
 	EXTLIBS = user32.lib advapi32.lib shell32.lib wininet.lib ws2_32.lib
@@ -1316,12 +1327,67 @@ ifeq ($(uname_S),Minix)
 	NO_CURL =
 	NO_EXPAT =
 endif
+ifeq ($(uname_S),NONSTOP_KERNEL)
+	# Needs some C99 features, "inline" is just one of them.
+	# INLINE='' would just replace one set of warnings with another and
+	# still not compile in c89 mode, due to non-const array initializations.
+	CC = cc -c99
+	# Disable all optimization, seems to result in bad code, with -O or -O2
+	# or even -O1 (default), /usr/local/libexec/git-core/git-pack-objects
+	# abends on "git push". Needs more investigation.
+	CFLAGS = -g -O0
+	# We'd want it to be here.
+	prefix = /usr/local
+	# Our's are in ${prefix}/bin (perl might also be in /usr/bin/perl).
+	PERL_PATH = ${prefix}/bin/perl
+	PYTHON_PATH = ${prefix}/bin/python
+
+	# As detected by './configure'.
+	# Missdetected, hence commented out, see below.
+	#NO_CURL = YesPlease
+	# Added manually, see above.
+	NEEDS_SSL_WITH_CURL = YesPlease
+	HAVE_LIBCHARSET_H = YesPlease
+	NEEDS_LIBICONV = YesPlease
+	NEEDS_LIBINTL_BEFORE_LIBICONV = YesPlease
+	NO_SYS_SELECT_H = UnfortunatelyYes
+	NO_D_TYPE_IN_DIRENT = YesPlease
+	NO_HSTRERROR = YesPlease
+	NO_STRCASESTR = YesPlease
+	NO_FNMATCH_CASEFOLD = YesPlease
+	NO_MEMMEM = YesPlease
+	NO_STRLCPY = YesPlease
+	NO_SETENV = YesPlease
+	NO_UNSETENV = YesPlease
+	NO_MKDTEMP = YesPlease
+	NO_MKSTEMPS = YesPlease
+	# Currently libiconv-1.9.1.
+	OLD_ICONV = UnfortunatelyYes
+	NO_REGEX = YesPlease
+	NO_PTHREADS = UnfortunatelyYes
+
+	# Not detected (nor checked for) by './configure'.
+	# We don't have SA_RESTART on NonStop, unfortunalety.
+	COMPAT_CFLAGS += -DSA_RESTART=0
+	# Apparently needed in compat/fnmatch/fnmatch.c.
+	COMPAT_CFLAGS += -DHAVE_STRING_H=1
+	NO_ST_BLOCKS_IN_STRUCT_STAT = YesPlease
+	NO_NSEC = YesPlease
+	NO_PREAD = YesPlease
+	NO_MMAP = YesPlease
+	NO_POLL = YesPlease
+	NO_INTPTR_T = UnfortunatelyYes
+	# Bug report 10-120822-4477 submitted to HP NonStop development.
+	MKDIR_WO_TRAILING_SLASH = YesPlease
+	# RFE 10-120912-4693 submitted to HP NonStop development.
+	NO_SETITIMER = UnfortunatelyYes
+endif
 ifneq (,$(findstring MINGW,$(uname_S)))
 	pathsep = ;
 	NO_PREAD = YesPlease
 	NEEDS_CRYPTO_WITH_SSL = YesPlease
 	NO_LIBGEN_H = YesPlease
-	NO_SYS_POLL_H = YesPlease
+	NO_POLL = YesPlease
 	NO_SYMLINK_HEAD = YesPlease
 	NO_UNIX_SOCKETS = YesPlease
 	NO_SETENV = YesPlease
@@ -1356,7 +1422,7 @@ ifneq (,$(findstring MINGW,$(uname_S)))
 	COMPAT_CFLAGS += -DSTRIP_EXTENSION=\".exe\"
 	COMPAT_OBJS += compat/mingw.o compat/winansi.o \
 		compat/win32/pthread.o compat/win32/syslog.o \
-		compat/win32/poll.o compat/win32/dirent.o
+		compat/win32/dirent.o
 	EXTLIBS += -lws2_32
 	PTHREAD_LIBS =
 	X = .exe
@@ -1552,6 +1618,9 @@ ifdef NEEDS_LIBICONV
 	else
 		ICONV_LINK =
 	endif
+	ifdef NEEDS_LIBINTL_BEFORE_LIBICONV
+		ICONV_LINK += -lintl
+	endif
 	EXTLIBS += $(ICONV_LINK) -liconv
 endif
 ifdef NEEDS_LIBGEN
@@ -1609,6 +1678,11 @@ endif
 ifdef NO_GETTEXT
 	BASIC_CFLAGS += -DNO_GETTEXT
 	USE_GETTEXT_SCHEME ?= fallthrough
+endif
+ifdef NO_POLL
+	NO_SYS_POLL_H = YesPlease
+	COMPAT_CFLAGS += -DNO_POLL -Icompat/poll
+	COMPAT_OBJS += compat/poll/poll.o
 endif
 ifdef NO_STRCASESTR
 	COMPAT_CFLAGS += -DNO_STRCASESTR
@@ -1706,6 +1780,9 @@ ifdef NO_TRUSTABLE_FILEMODE
 endif
 ifdef NO_IPV6
 	BASIC_CFLAGS += -DNO_IPV6
+endif
+ifdef NO_INTPTR_T
+	COMPAT_CFLAGS += -DNO_INTPTR_T
 endif
 ifdef NO_UINTMAX_T
 	BASIC_CFLAGS += -Duintmax_t=uint32_t
