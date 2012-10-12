@@ -1679,7 +1679,6 @@ sub parents_exclude {
 				if ( $commit eq $excluded ) {
 					push @excluded, $commit;
 					$found++;
-					last;
 				}
 				else {
 					push @new, $commit;
@@ -1713,14 +1712,14 @@ sub find_extra_svn_parents {
 	my @merge_tips;
 	my $url = $self->url;
 	my $uuid = $self->ra_uuid;
-	my %ranges;
+	my @all_ranges;
 	for my $merge ( @merges ) {
 		my ($tip_commit, @ranges) =
 			lookup_svn_merge( $uuid, $url, $merge );
 		unless (!$tip_commit or
 				grep { $_ eq $tip_commit } @$parents ) {
 			push @merge_tips, $tip_commit;
-			$ranges{$tip_commit} = \@ranges;
+			push @all_ranges, @ranges;
 		} else {
 			push @merge_tips, undef;
 		}
@@ -1734,8 +1733,6 @@ sub find_extra_svn_parents {
 	for my $merge_tip ( @merge_tips ) {
 		my $spec = shift @merges;
 		next unless $merge_tip and $excluded{$merge_tip};
-
-		my $ranges = $ranges{$merge_tip};
 
 		# check out 'new' tips
 		my $merge_base;
@@ -1758,7 +1755,7 @@ sub find_extra_svn_parents {
 		my (@incomplete) = check_cherry_pick(
 			$merge_base, $merge_tip,
 			$parents,
-			@$ranges,
+			@all_ranges,
 		       );
 
 		if ( @incomplete ) {
@@ -2334,11 +2331,11 @@ sub path {
 
 	if (@_) {
 		my $path = shift;
-		$self->{path} = canonicalize_path($path);
+		$self->{_path} = canonicalize_path($path);
 		return;
 	}
 
-	return $self->{path};
+	return $self->{_path};
 }
 
 sub url {
