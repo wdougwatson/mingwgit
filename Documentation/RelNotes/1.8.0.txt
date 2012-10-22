@@ -4,16 +4,18 @@ Git v1.8.0 Release Notes
 Backward compatibility notes
 ----------------------------
 
-In the next major release, we will change the behavior of the "git
-push" command.  When "git push [$there]" does not say what to push, we
-have used the traditional "matching" semantics so far (all your branches were
-sent to the remote as long as there already are branches of the same
-name over there).  We will now use the "simple" semantics, that pushes the
-current branch to the branch with the same name only when the current
+In the next major release (not *this* one), we will change the
+behavior of the "git push" command.
+
+When "git push [$there]" does not say what to push, we have used the
+traditional "matching" semantics so far (all your branches were sent
+to the remote as long as there already are branches of the same name
+over there).  We will use the "simple" semantics that pushes the
+current branch to the branch with the same name, only when the current
 branch is set to integrate with that remote branch.  There is a user
 preference configuration variable "push.default" to change this, and
 "git push" will warn about the upcoming change until you set this
-variable.
+variable in this release.
 
 "git branch --set-upstream" is deprecated and may be removed in a
 relatively distant future.  "git branch [-u|--set-upstream-to]" has
@@ -35,7 +37,7 @@ UI, Workflows & Features
 
  * When "git am" sanitizes the "Subject:" line, we strip the prefix from
    "Re: subject" and also from a less common "re: subject", but left
-   the even less common "RE: subject" intact. We strip that now, too.
+   the even less common "RE: subject" intact.  Now we strip that too.
 
  * It was tempting to say "git branch --set-upstream origin/master",
    but that tells Git to arrange the local branch "origin/master" to
@@ -62,6 +64,8 @@ UI, Workflows & Features
  * "git grep" learned to use a non-standard pattern type by default if
    a configuration variable tells it to.
 
+ * Accumulated updates to "git gui" has been merged.
+
  * "git log -g" learned the "--grep-reflog=<pattern>" option to limit
    its output to commits with a reflog message that matches the given
    pattern.
@@ -72,9 +76,6 @@ UI, Workflows & Features
  * "git mergetool" now allows users to override the actual command used
    with the mergetool.$name.cmd configuration variable even for built-in
    mergetool backends.
-
- * The "-Xours" backend option to "git merge -s recursive" now takes
-   effect even on binary files.
 
  * "git rebase -i" learned the "--edit-todo" option to open an editor
    to edit the instruction sheet.
@@ -88,7 +89,7 @@ Foreign Interface
    encountering a conflict during "p4 submit".
 
 
-Performance, Internal Implementation, etc. (please report possible regressions)
+Performance, Internal Implementation, etc.
 
  * Git ships with a fall-back regexp implementation for platforms with
    buggy regexp library, but it was easy for people to keep using their
@@ -210,6 +211,9 @@ to them for details).
    is much less common, and did not advertise the more common "gzip" on
    its Accept-Encoding header.
 
+ * "git fetch" over the dumb-http revision walker could segfault when
+   curl's multi interface was used.
+
  * "git gc --auto" notified the user that auto-packing has triggered
     even under the "--quiet" option.
 
@@ -221,6 +225,9 @@ to them for details).
    mention both A and B, but when these three options are used with
    --author or --committer, it showed commits that mention either A or
    B (or both) instead.
+
+ * The "-Xours" backend option to "git merge -s recursive" was ignored
+   for binary files.
 
  * "git p4", when "--use-client-spec" and "--detect-branches" are used
    together, misdetected branches.
@@ -255,3 +262,6 @@ to them for details).
 
  * "git status" honored the ignore=dirty settings in .gitmodules but
    "git commit" didn't.
+
+ * "gitweb" did not give the correct committer timezone in its feed
+   output due to a typo.
