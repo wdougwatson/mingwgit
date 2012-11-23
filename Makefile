@@ -1086,6 +1086,7 @@ ifeq ($(uname_O),Cygwin)
 		NO_SYMLINK_HEAD = YesPlease
 		NO_IPV6 = YesPlease
 		OLD_ICONV = UnfortunatelyYes
+		CYGWIN_V15_WIN32API = YesPlease
 	endif
 	NO_THREAD_SAFE_PREAD = YesPlease
 	NEEDS_LIBICONV = YesPlease
@@ -1385,6 +1386,10 @@ ifeq ($(uname_S),NONSTOP_KERNEL)
 	MKDIR_WO_TRAILING_SLASH = YesPlease
 	# RFE 10-120912-4693 submitted to HP NonStop development.
 	NO_SETITIMER = UnfortunatelyYes
+	SANE_TOOL_PATH=/usr/coreutils/bin:/usr/local/bin
+	SHELL_PATH=/usr/local/bin/bash
+	# as of H06.25/J06.14, we might better use this
+	#SHELL_PATH=/usr/coreutils/bin/bash
 endif
 ifneq (,$(findstring MINGW,$(uname_S)))
 	pathsep = ;
@@ -1892,6 +1897,9 @@ endif
 ifdef NO_REGEX
 	COMPAT_CFLAGS += -Icompat/regex
 	COMPAT_OBJS += compat/regex/regex.o
+endif
+ifdef CYGWIN_V15_WIN32API
+	COMPAT_CFLAGS += -DCYGWIN_V15_WIN32API
 endif
 
 ifdef USE_NED_ALLOCATOR
