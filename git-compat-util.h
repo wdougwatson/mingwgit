@@ -75,7 +75,7 @@
 # endif
 #elif !defined(__APPLE__) && !defined(__FreeBSD__) && !defined(__USLC__) && \
       !defined(_M_UNIX) && !defined(__sgi) && !defined(__DragonFly__) && \
-      !defined(__TANDEM)
+      !defined(__TANDEM) && !defined(__QNX__)
 #define _XOPEN_SOURCE 600 /* glibc2 and AIX 5.3L need 500, OpenBSD needs 600 for S_ISLNK() */
 #define _XOPEN_SOURCE_EXTENDED 1 /* AIX 5.3L needs this */
 #endif
@@ -99,12 +99,14 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
-#ifdef __TANDEM /* or HAVE_STRINGS_H or !NO_STRINGS_H? */
+#ifdef HAVE_STRINGS_H
 #include <strings.h> /* for strcasecmp() */
 #endif
 #include <errno.h>
 #include <limits.h>
+#ifdef NEEDS_SYS_PARAM_H
 #include <sys/param.h>
+#endif
 #include <sys/types.h>
 #include <dirent.h>
 #include <sys/time.h>
@@ -288,6 +290,17 @@ extern NORETURN void die_errno(const char *err, ...) __attribute__((format (prin
 extern int error(const char *err, ...) __attribute__((format (printf, 1, 2)));
 extern void warning(const char *err, ...) __attribute__((format (printf, 1, 2)));
 
+/*
+ * Let callers be aware of the constant return value; this can help
+ * gcc with -Wuninitialized analysis. We have to restrict this trick to
+ * gcc, though, because of the variadic macro and the magic ## comma pasting
+ * behavior. But since we're only trying to help gcc, anyway, it's OK; other
+ * compilers will fall back to using the function as usual.
+ */
+#ifdef __GNUC__
+#define error(fmt, ...) (error((fmt), ##__VA_ARGS__), -1)
+#endif
+
 extern void set_die_routine(NORETURN_PTR void (*routine)(const char *err, va_list params));
 extern void set_error_routine(void (*routine)(const char *err, va_list params));
 
@@ -409,6 +422,10 @@ extern const char *githstrerror(int herror);
 #define memmem gitmemmem
 void *gitmemmem(const void *haystack, size_t haystacklen,
                 const void *needle, size_t needlelen);
+#endif
+
+#ifdef NO_GETPAGESIZE
+#define getpagesize() sysconf(_SC_PAGESIZE)
 #endif
 
 #ifdef FREAD_READS_DIRECTORIES

@@ -753,6 +753,14 @@ AC_CHECK_MEMBER(struct dirent.d_type,
 [#include <dirent.h>])
 GIT_CONF_SUBST([NO_D_TYPE_IN_DIRENT])
 #
+# Define NO_GECOS_IN_PWENT if you don't have pw_gecos in struct passwd
+# in the C library.
+AC_CHECK_MEMBER(struct passwd.pw_gecos,
+[NO_GECOS_IN_PWENT=],
+[NO_GECOS_IN_PWENT=YesPlease],
+[#include <pwd.h>])
+GIT_CONF_SUBST([NO_GECOS_IN_PWENT])
+#
 # Define NO_SOCKADDR_STORAGE if your platform does not have struct
 # sockaddr_storage.
 AC_CHECK_TYPE(struct sockaddr_storage,
@@ -872,6 +880,12 @@ AC_CHECK_HEADER([libcharset.h],
 [HAVE_LIBCHARSET_H=YesPlease],
 [HAVE_LIBCHARSET_H=])
 GIT_CONF_SUBST([HAVE_LIBCHARSET_H])
+#
+# Define HAVE_STRINGS_H if you have strings.h
+AC_CHECK_HEADER([strings.h],
+[HAVE_STRINGS_H=YesPlease],
+[HAVE_STRINGS_H=])
+GIT_CONF_SUBST([HAVE_STRINGS_H])
 # Define CHARSET_LIB if libiconv does not export the locale_charset symbol
 # and libcharset does
 CHARSET_LIB=
@@ -1021,7 +1035,17 @@ if test -n "$USER_NOPTHREAD"; then
 # -D_REENTRANT' or some such.
 elif test -z "$PTHREAD_CFLAGS"; then
   threads_found=no
-  for opt in -mt -pthread -lpthread; do
+  # Attempt to compile and link some code using pthreads to determine
+  # required linker flags. The order is somewhat important here: We
+  # first try it without any extra flags, to catch systems where
+  # pthreads are part of the C library, then go on testing various other
+  # flags. We do so to avoid false positives. For example, on Mac OS X
+  # pthreads are part of the C library; moreover, the compiler allows us
+  # to add "-mt" to the CFLAGS (although it will do nothing except
+  # trigger a warning about an unused flag). Hence if we checked for
+  # "-mt" before "" we would end up picking it. But unfortunately this
+  # would then trigger compiler warnings on every single file we compile.
+  for opt in "" -mt -pthread -lpthread; do
      old_CFLAGS="$CFLAGS"
      CFLAGS="$opt $CFLAGS"
      AC_MSG_CHECKING([for POSIX Threads with '$opt'])

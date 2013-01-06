@@ -74,9 +74,13 @@ all::
 # Define NO_D_TYPE_IN_DIRENT if your platform defines DT_UNKNOWN but lacks
 # d_type in struct dirent (Cygwin 1.5, fixed in Cygwin 1.7).
 #
+# Define HAVE_STRINGS_H if you have strings.h and need it for strcasecmp.
+#
 # Define NO_STRCASESTR if you don't have strcasestr.
 #
 # Define NO_MEMMEM if you don't have memmem.
+#
+# Define NO_GETPAGESIZE if you don't have getpagesize.
 #
 # Define NO_STRLCPY if you don't have strlcpy.
 #
@@ -164,6 +168,10 @@ all::
 #
 # Define NO_POLL if you do not have or don't want to use poll().
 # This also implies NO_SYS_POLL_H.
+#
+# Define NEEDS_SYS_PARAM_H if you need to include sys/param.h to compile,
+# *PLEASE* REPORT to git@vger.kernel.org if your platform needs this;
+# we want to know more about the issue.
 #
 # Define NO_PTHREADS if you do not have or do not want to use Pthreads.
 #
@@ -470,7 +478,7 @@ SCRIPT_PERL += git-relink.perl
 SCRIPT_PERL += git-send-email.perl
 SCRIPT_PERL += git-svn.perl
 
-SCRIPT_PYTHON += git-remote-testgit.py
+SCRIPT_PYTHON += git-remote-testpy.py
 SCRIPT_PYTHON += git-p4.py
 
 SCRIPTS = $(patsubst %.sh,%,$(SCRIPT_SH)) \
@@ -1353,6 +1361,7 @@ ifeq ($(uname_S),NONSTOP_KERNEL)
 	# Added manually, see above.
 	NEEDS_SSL_WITH_CURL = YesPlease
 	HAVE_LIBCHARSET_H = YesPlease
+	HAVE_STRINGS_H = YesPlease
 	NEEDS_LIBICONV = YesPlease
 	NEEDS_LIBINTL_BEFORE_LIBICONV = YesPlease
 	NO_SYS_SELECT_H = UnfortunatelyYes
@@ -1447,6 +1456,22 @@ ifneq (,$(wildcard ../THIS_IS_MSYSGIT))
 else
 	NO_CURL = YesPlease
 endif
+endif
+ifeq ($(uname_S),QNX)
+	COMPAT_CFLAGS += -DSA_RESTART=0
+	HAVE_STRINGS_H = YesPlease
+	NEEDS_SOCKET = YesPlease
+	NO_FNMATCH_CASEFOLD = YesPlease
+	NO_GETPAGESIZE = YesPlease
+	NO_ICONV = YesPlease
+	NO_MEMMEM = YesPlease
+	NO_MKDTEMP = YesPlease
+	NO_MKSTEMPS = YesPlease
+	NO_NSEC = YesPlease
+	NO_PTHREADS = YesPlease
+	NO_R_TO_GCC_LINKER = YesPlease
+	NO_STRCASESTR = YesPlease
+	NO_STRLCPY = YesPlease
 endif
 
 -include config.mak.autogen
@@ -1655,6 +1680,9 @@ endif
 ifdef NO_D_INO_IN_DIRENT
 	BASIC_CFLAGS += -DNO_D_INO_IN_DIRENT
 endif
+ifdef NO_GECOS_IN_PWENT
+	BASIC_CFLAGS += -DNO_GECOS_IN_PWENT
+endif
 ifdef NO_ST_BLOCKS_IN_STRUCT_STAT
 	BASIC_CFLAGS += -DNO_ST_BLOCKS_IN_STRUCT_STAT
 endif
@@ -1747,6 +1775,9 @@ ifdef NO_SYS_SELECT_H
 endif
 ifdef NO_SYS_POLL_H
 	BASIC_CFLAGS += -DNO_SYS_POLL_H
+endif
+ifdef NEEDS_SYS_PARAM_H
+	BASIC_CFLAGS += -DNEEDS_SYS_PARAM_H
 endif
 ifdef NO_INTTYPES_H
 	BASIC_CFLAGS += -DNO_INTTYPES_H
@@ -1859,6 +1890,9 @@ ifdef NO_MEMMEM
 	COMPAT_CFLAGS += -DNO_MEMMEM
 	COMPAT_OBJS += compat/memmem.o
 endif
+ifdef NO_GETPAGESIZE
+	COMPAT_CFLAGS += -DNO_GETPAGESIZE
+endif
 ifdef INTERNAL_QSORT
 	COMPAT_CFLAGS += -DINTERNAL_QSORT
 	COMPAT_OBJS += compat/qsort.o
@@ -1882,6 +1916,10 @@ endif
 ifdef HAVE_LIBCHARSET_H
 	BASIC_CFLAGS += -DHAVE_LIBCHARSET_H
 	EXTLIBS += $(CHARSET_LIB)
+endif
+
+ifdef HAVE_STRINGS_H
+	BASIC_CFLAGS += -DHAVE_STRINGS_H
 endif
 
 ifdef HAVE_DEV_TTY
