@@ -38,14 +38,36 @@ UI, Workflows & Features
  * Scripts can ask Git that wildcard patterns in pathspecs they give do
    not have any significance, i.e. take them as literal strings.
 
+ * The pathspec code learned to grok "foo/**/bar" as a pattern that
+   matches "bar" in 0-or-more levels of subdirectory in "foo".
+
+ * "git cherry-pick" can be used to replay a root commit to an unborn
+   branch.
+
  * "git fetch --mirror" and fetch that uses other forms of refspec
    with wildcard used to attempt to update a symbolic ref that match
    the wildcard on the receiving end, which made little sense (the
    real ref that is pointed at by the symbolic ref would be updated
    anyway).  Symbolic refs no longer are affected by such a fetch.
 
+ * "git format-patch" now detects more cases in which a whole branch
+   is being exported, and uses the description for the branch, when
+   asked to write a cover letter for the series.
+
+ * "git format-patch" learned "-v $count" option, and prepends a
+   string "v$count-" to the names of its output files, and also
+   automatically sets the subject prefix to "PATCH v$count". This
+   allows patches from rerolled series to be stored under different
+   names and makes it easier to reuse cover letter messsages.
+
  * "git push" now requires "-f" to update a tag, even if it is a
    fast-forward, as tags are meant to be fixed points.
+
+ * When "git rebase" fails to generate patches to be applied (e.g. due
+   to oom), it failed to detect the failure and instead behaved as if
+   there were nothing to do.  A workaround to use a temporary file has
+   been applied, but we probably would want to revisit this later, as
+   it hurts the common case of not failing at all.
 
  * "git submodule" started learning a new mode to integrate with the
    tip of the remote branch (as opposed to integrating with the commit
@@ -56,6 +78,8 @@ Foreign Interface
 
  * "git fast-export" has been updated for its use in the context of
    the remote helper interface.
+
+ * A new remote helper to interact with bzr has been added to contrib/.
 
 
 Performance, Internal Implementation, etc.
@@ -68,6 +92,10 @@ Performance, Internal Implementation, etc.
 
  * The implementation of "imap-send" has been updated to reuse xml
    quoting code from http-push codepath.
+
+ * There is a simple-minded checker for the test scripts in t/
+   directory to catch most common mistakes (it is not enabled by
+   default).
 
 
 Also contains minor documentation updates and code clean-ups.
@@ -85,23 +113,22 @@ details).
    the GIT_DIR discovery logic to escape the ceiling.
    (merge 059b379 mh/ceiling later to maint).
 
- * t4014, t9502 and t0200 tests had various portability issues that
-   broke on OpenBSD.
-   (merge 27f6342 jc/maint-test-portability later to maint).
-
- * t9020 and t3600 tests had various portability issues.
-   (merge 5a02966 jc/test-portability later to maint).
-
- * t9200 runs "cvs init" on a directory that already exists, but a
-   platform can configure this fail for the current user (e.g. you
-   need to be in the cvsadmin group on NetBSD 6.0).
-   (merge 8666df0 jc/test-cvs-no-init-in-existing-dir later to maint).
+ * When attempting to read the XDG-style $HOME/.config/git/config and
+   finding that $HOME/.config/git is a file, we gave a wrong error
+   message, instead of treating the case as "a custom config file does
+   not exist there" and moving on.
+   (merge 8f2bbe4 jn/warn-on-inaccessible-loosen later to maint).
 
  * The behaviour visible to the end users was confusing, when they
    attempt to kill a process spawned in the editor that was in turn
    launched by Git with SIGINT (or SIGQUIT), as Git would catch that
    signal and die.  We ignore these signals now.
    (merge 1250857 pf/editor-ignore-sigint later to maint).
+
+ * A child process that was killed by a signal (e.g. SIGINT) was
+   reported in an inconsistent way depending on how the process was
+   spawned by us, with or without a shell in between.
+   (merge 709ca73 jk/unify-exit-code-by-receiving-signal later to maint).
 
  * After failing to create a temporary file using mkstemp(), failing
    pathname was not reported correctly on some platforms.
@@ -111,6 +138,23 @@ details).
    applied to only a single directory itself with "path/" like the
    exclude mechanism does.
    (merge 94bc671 ja/directory-attrs later to maint).
+
+ * "git apply" misbehaved when fixing whitespace breakages by removing
+   excess trailing blank lines.
+   (merge 5de7166 jc/apply-trailing-blank-removal later to maint).
+
+ * A tar archive created by "git archive" recorded a directory in a
+   way that made NetBSD's implementation of "tar" sometimes unhappy.
+   (merge 22f0dcd rs/leave-base-name-in-name-field-of-tar later to maint).
+
+ * "git archive" did not record uncompressed size in the header when
+   streaming a zip archive, which confused some implementations of unzip.
+   (merge 5ea2c84 rs/zip-with-uncompressed-size-in-the-header later to maint).
+
+ * When "git clone --separate-git-dir=$over_there" is interrupted, it
+   failed to remove the real location of the $GIT_DIR it created.
+   This was most visible when interrupting a submodule update.
+   (merge 9be1980 jl/interrupt-clone-remove-separate-git-dir later to maint).
 
  * The way "git svn" asked for password using SSH_ASKPASS and
    GIT_ASKPASS was not in line with the rest of the system.
@@ -132,10 +176,25 @@ details).
    index, the cache-tree data structure got corrupted.
    (merge eec3e7e nd/invalidate-i-t-a-cache-tree later to maint).
 
+ * "git merge --no-edit" computed who were involved in the work done
+   on the side branch, even though that information is to be discarded
+   without getting seen in the editor.
+   (merge 9bcbb1c jc/maint-fmt-merge-msg-no-edit-lose-credit later to maint).
+
+ * "git merge" started calling prepare-commit-msg hook like "git
+   commit" does some time ago, but forgot to pay attention to the exit
+   status of the hook.
+   (merge 3e4141d ap/merge-stop-at-prepare-commit-msg-failure later to maint).
+
  * "gitweb", when sorting by age to show repositories with new
    activities first, used to sort repositories with absolutely
    nothing in it early, which was not very useful.
    (merge 28dae18 md/gitweb-sort-by-age later to maint).
+
+ * "gitweb"'s code to sanitize control characters before passing it to
+   "highlight" filter lost known-to-be-safe control characters by
+   mistake.
+   (merge 0e901d2 os/gitweb-highlight-uncaptured later to maint).
 
  * When a line to be wrapped has a solid run of non space characters
    whose length exactly is the wrap width, "git shortlog -w" failed
@@ -145,3 +204,31 @@ details).
  * Some shells do not behave correctly when IFS is unset; work it
    around by explicitly setting it to the default value.
    (merge 393050c jc/maint-fbsd-sh-ifs-workaround later to maint).
+
+ * Some scripted programs written in Python did not get updated when
+   PYTHON_PATH changed.
+   (cherry-pick 96a4647fca54031974cd6ad1 later to maint).
+
+ * When autoconf is used, any build on a different commit always ran
+   "config.status --recheck" even when unnecessary.
+   (merge 1226504 jn/less-reconfigure later to maint).
+
+ * We have been carrying a translated and long-unmaintained copy of an
+   old version of the tutorial; removed.
+   (merge 0a85441 ta/remove-stale-translated-tut later to maint).
+
+ * t4014, t9502 and t0200 tests had various portability issues that
+   broke on OpenBSD.
+   (merge 27f6342 jc/maint-test-portability later to maint).
+
+ * t9020 and t3600 tests had various portability issues.
+   (merge 5a02966 jc/test-portability later to maint).
+
+ * t9200 runs "cvs init" on a directory that already exists, but a
+   platform can configure this fail for the current user (e.g. you
+   need to be in the cvsadmin group on NetBSD 6.0).
+   (merge 8666df0 jc/test-cvs-no-init-in-existing-dir later to maint).
+
+ * t9020 and t9810 had a few non-portable shell script construct.
+   (merge 2797914 tb/test-t9020-no-which later to maint).
+   (merge 6f4e505 tb/test-t9810-no-sed-i later to maint).
