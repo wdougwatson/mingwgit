@@ -112,7 +112,9 @@
 #include <sys/time.h>
 #include <time.h>
 #include <signal.h>
+#ifndef USE_WILDMATCH
 #include <fnmatch.h>
+#endif
 #include <assert.h>
 #include <regex.h>
 #include <utime.h>
@@ -280,6 +282,17 @@ extern char *gitbasename(char *);
 
 #include "compat/bswap.h"
 
+#ifdef USE_WILDMATCH
+#include "wildmatch.h"
+#define FNM_PATHNAME WM_PATHNAME
+#define FNM_CASEFOLD WM_CASEFOLD
+#define FNM_NOMATCH  WM_NOMATCH
+static inline int fnmatch(const char *pattern, const char *string, int flags)
+{
+	return wildmatch(pattern, string, flags, NULL);
+}
+#endif
+
 /* General helper functions */
 extern void vreportf(const char *prefix, const char *err, va_list params);
 extern void vwritef(int fd, const char *prefix, const char *err, va_list params);
@@ -297,7 +310,7 @@ extern void warning(const char *err, ...) __attribute__((format (printf, 1, 2)))
  * behavior. But since we're only trying to help gcc, anyway, it's OK; other
  * compilers will fall back to using the function as usual.
  */
-#ifdef __GNUC__
+#if defined(__GNUC__) && ! defined(__clang__)
 #define error(fmt, ...) (error((fmt), ##__VA_ARGS__), -1)
 #endif
 

@@ -536,6 +536,7 @@ extern int delete_ref(const char *, const unsigned char *sha1, int delopt);
 /* Environment bits from configuration mechanism */
 extern int trust_executable_bit;
 extern int trust_ctime;
+extern int check_stat;
 extern int quote_path_fully;
 extern int has_symlinks;
 extern int minimum_abbrev, default_abbrev;
@@ -1011,7 +1012,6 @@ struct ref {
 		requires_force:1,
 		merge:1,
 		nonfastforward:1,
-		not_forwardable:1,
 		update:1,
 		deletion:1;
 	enum {
@@ -1148,7 +1148,7 @@ extern int check_repository_format_version(const char *var, const char *value, v
 extern int git_env_bool(const char *, int);
 extern int git_config_system(void);
 extern int config_error_nonbool(const char *);
-#ifdef __GNUC__
+#if defined(__GNUC__) && ! defined(__clang__)
 #define config_error_nonbool(s) (config_error_nonbool(s), -1)
 #endif
 extern const char *get_log_output_encoding(void);

@@ -235,6 +235,12 @@ core.trustctime::
 	crawlers and some backup systems).
 	See linkgit:git-update-index[1]. True by default.
 
+core.checkstat::
+	Determines which stat fields to match between the index
+	and work tree. The user can set this to 'default' or
+	'minimal'. Default (or explicitly 'default'), is to check
+	all fields, including the sub-second part of mtime and ctime.
+
 core.quotepath::
 	The commands that output paths (e.g. 'ls-files',
 	'diff'), when not given the `-z` option, will quote
@@ -923,6 +929,15 @@ column.tag::
 	Specify whether to output tag listing in `git tag` in columns.
 	See `column.ui` for details.
 
+commit.cleanup::
+	This setting overrides the default of the `--cleanup` option in
+	`git commit`. See linkgit:git-commit[1] for details. Changing the
+	default can be useful when you always want to keep lines that begin
+	with comment character `#` in your log message, in which case you
+	would do `git config commit.cleanup whitespace` (note that you will
+	have to remove the help lines that begin with `#` in the commit log
+	template yourself, if you do this).
+
 commit.status::
 	A boolean to enable/disable inclusion of status information in the
 	commit message template when using an editor to prepare the commit
@@ -1361,6 +1376,12 @@ help.autocorrect::
 	value is 0 - the command will be just shown but not executed.
 	This is the default.
 
+help.htmlpath::
+	Specify the path where the HTML documentation resides. File system paths
+	and URLs are supported. HTML pages will be prefixed with this path when
+	help is displayed in the 'web' format. This defaults to the documentation
+	path of your Git installation.
+
 http.proxy::
 	Override the HTTP proxy, normally configured using the 'http_proxy',
 	'https_proxy', and 'all_proxy' environment variables (see
@@ -1518,6 +1539,10 @@ log.showroot::
 	This is equivalent to a diff against an empty tree.
 	Tools like linkgit:git-log[1] or linkgit:git-whatchanged[1], which
 	normally hide the root commit will now show it. True by default.
+
+log.mailmap::
+	If true, makes linkgit:git-log[1], linkgit:git-show[1], and
+	linkgit:git-whatchanged[1] assume `--use-mailmap`.
 
 mailmap.file::
 	The location of an augmenting mailmap file. The default

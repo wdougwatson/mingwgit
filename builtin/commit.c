@@ -103,7 +103,7 @@ static enum {
 	CLEANUP_NONE,
 	CLEANUP_ALL
 } cleanup_mode;
-static char *cleanup_arg;
+static const char *cleanup_arg;
 
 static enum commit_whence whence;
 static int use_editor = 1, include_status = 1;
@@ -1320,14 +1320,14 @@ static int git_commit_config(const char *k, const char *v, void *cb)
 		include_status = git_config_bool(k, v);
 		return 0;
 	}
+	if (!strcmp(k, "commit.cleanup"))
+		return git_config_string(&cleanup_arg, k, v);
 
 	status = git_gpg_config(k, v, NULL);
 	if (status)
 		return status;
 	return git_status_config(k, v, s);
 }
-
-static const char post_rewrite_hook[] = "hooks/post-rewrite";
 
 static int run_rewrite_hook(const unsigned char *oldsha1,
 			    const unsigned char *newsha1)
@@ -1339,10 +1339,10 @@ static int run_rewrite_hook(const unsigned char *oldsha1,
 	int code;
 	size_t n;
 
-	if (access(git_path(post_rewrite_hook), X_OK) < 0)
+	argv[0] = find_hook("post-rewrite");
+	if (!argv[0])
 		return 0;
 
-	argv[0] = git_path(post_rewrite_hook);
 	argv[1] = "amend";
 	argv[2] = NULL;
 
