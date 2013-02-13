@@ -7,16 +7,36 @@
 #            2007 Trolltech ASA
 # License: MIT <http://www.opensource.org/licenses/mit-license.php>
 #
-
 import sys
 if sys.hexversion < 0x02040000:
     # The limiter is the subprocess module
     sys.stderr.write("git-p4: requires Python 2.4 or later.\n")
     sys.exit(1)
+import os
+import optparse
+import marshal
+import subprocess
+import tempfile
+import time
+import platform
+import re
+import shutil
+import stat
 
-import optparse, os, marshal, subprocess, shelve
-import tempfile, getopt, os.path, time, platform
-import re, shutil
+try:
+    from subprocess import CalledProcessError
+except ImportError:
+    # from python2.7:subprocess.py
+    # Exception classes used by this module.
+    class CalledProcessError(Exception):
+        """This exception is raised when a process run by check_call() returns
+        a non-zero exit status.  The exit status will be stored in the
+        returncode attribute."""
+        def __init__(self, returncode, cmd):
+            self.returncode = returncode
+            self.cmd = cmd
+        def __str__(self):
+            return "Command '%s' returned non-zero exit status %d" % (self.cmd, self.returncode)
 
 verbose = False
 
@@ -158,13 +178,33 @@ def system(cmd):
     expand = isinstance(cmd,basestring)
     if verbose:
         sys.stderr.write("executing %s\n" % str(cmd))
-    subprocess.check_call(cmd, shell=expand)
+    retcode = subprocess.call(cmd, shell=expand)
+    if retcode:
+        raise CalledProcessError(retcode, cmd)
 
 def p4_system(cmd):
     """Specifically invoke p4 as the system command. """
     real_cmd = p4_build_cmd(cmd)
     expand = isinstance(real_cmd, basestring)
-    subprocess.check_call(real_cmd, shell=expand)
+    retcode = subprocess.call(real_cmd, shell=expand)
+    if retcode:
+        raise CalledProcessError(retcode, real_cmd)
+
+_p4_version_string = None
+def p4_version_string():
+    """Read the version string, showing just the last line, which
+       hopefully is the interesting version bit.
+
+       $ p4 -V
+       Perforce - The Fast Software Configuration Management System.
+       Copyright 1995-2011 Perforce Software.  All rights reserved.
+       Rev. P4/NTX86/2011.1/393975 (2011/12/16).
+    """
+    global _p4_version_string
+    if not _p4_version_string:
+        a = p4_read_pipe_lines(["-V"])
+        _p4_version_string = a[-1].rstrip()
+    return _p4_version_string
 
 def p4_integrate(src, dest):
     p4_system(["integrate", "-Dt", wildcard_encode(src), wildcard_encode(dest)])
@@ -539,18 +579,30 @@ def gitBranchExists(branch):
     return proc.wait() == 0;
 
 _gitConfig = {}
-def gitConfig(key, args = None): # set args to "--bool", for instance
+
+def gitConfig(key):
     if not _gitConfig.has_key(key):
-        argsFilter = ""
-        if args != None:
-            argsFilter = "%s " % args
-        cmd = "git config %s%s" % (argsFilter, key)
-        _gitConfig[key] = read_pipe(cmd, ignore_error=True).strip()
+        cmd = [ "git", "config", key ]
+        s = read_pipe(cmd, ignore_error=True)
+        _gitConfig[key] = s.strip()
+    return _gitConfig[key]
+
+def gitConfigBool(key):
+    """Return a bool, using git config --bool.  It is True only if the
+       variable is set to true, and False if set to false or not present
+       in the config."""
+
+    if not _gitConfig.has_key(key):
+        cmd = [ "git", "config", "--bool", key ]
+        s = read_pipe(cmd, ignore_error=True)
+        v = s.strip()
+        _gitConfig[key] = v == "true"
     return _gitConfig[key]
 
 def gitConfigList(key):
     if not _gitConfig.has_key(key):
-        _gitConfig[key] = read_pipe("git config --get-all %s" % key, ignore_error=True).strip().split(os.linesep)
+        s = read_pipe(["git", "config", "--get-all", key], ignore_error=True)
+        _gitConfig[key] = s.strip().split(os.linesep)
     return _gitConfig[key]
 
 def p4BranchesInGit(branchesAreInRemotes=True):
@@ -697,8 +749,7 @@ def p4PathStartsWith(path, prefix):
     #
     # we may or may not have a problem. If you have core.ignorecase=true,
     # we treat DirA and dira as the same directory
-    ignorecase = gitConfig("core.ignorecase", "--bool") == "true"
-    if ignorecase:
+    if gitConfigBool("core.ignorecase"):
         return path.lower().startswith(prefix.lower())
     return path.startswith(prefix)
 
@@ -768,7 +819,8 @@ def wildcard_encode(path):
     return path
 
 def wildcard_present(path):
-    return path.translate(None, "*#@%") != path
+    m = re.search("[*#@%]", path)
+    return m is not None
 
 class Command:
     def __init__(self):
@@ -934,7 +986,7 @@ class P4Submit(Command, P4UserMap):
         self.usage += " [name of git branch to submit into perforce depot]"
         self.origin = ""
         self.detectRenames = False
-        self.preserveUser = gitConfig("git-p4.preserveUser").lower() == "true"
+        self.preserveUser = gitConfigBool("git-p4.preserveUser")
         self.dry_run = False
         self.prepare_p4_only = False
         self.conflict_behavior = None
@@ -1029,7 +1081,8 @@ class P4Submit(Command, P4UserMap):
     def p4UserForCommit(self,id):
         # Return the tuple (perforce user,git email) for a given git commit id
         self.getUserMapFromPerforceServer()
-        gitEmail = read_pipe("git log --max-count=1 --format='%%ae' %s" % id)
+        gitEmail = read_pipe(["git", "log", "--max-count=1",
+                              "--format=%ae", id])
         gitEmail = gitEmail.strip()
         if not self.emails.has_key(gitEmail):
             return (None,gitEmail)
@@ -1042,7 +1095,7 @@ class P4Submit(Command, P4UserMap):
             (user,email) = self.p4UserForCommit(id)
             if not user:
                 msg = "Cannot find p4 user for email %s in commit %s." % (email, id)
-                if gitConfig('git-p4.allowMissingP4Users').lower() == "true":
+                if gitConfigBool("git-p4.allowMissingP4Users"):
                     print "%s" % msg
                 else:
                     die("Error: %s\nSet git-p4.allowMissingP4Users to true to allow this." % msg)
@@ -1137,7 +1190,7 @@ class P4Submit(Command, P4UserMap):
            message.  Return true if okay to continue with the submit."""
 
         # if configured to skip the editing part, just submit
-        if gitConfig("git-p4.skipSubmitEdit") == "true":
+        if gitConfigBool("git-p4.skipSubmitEdit"):
             return True
 
         # look at the modification time, to check later if the user saved
@@ -1153,7 +1206,7 @@ class P4Submit(Command, P4UserMap):
 
         # If the file was not saved, prompt to see if this patch should
         # be skipped.  But skip this verification step if configured so.
-        if gitConfig("git-p4.skipSubmitEditCheck") == "true":
+        if gitConfigBool("git-p4.skipSubmitEditCheck"):
             return True
 
         # modification time updated means user saved the file
@@ -1211,6 +1264,9 @@ class P4Submit(Command, P4UserMap):
                     p4_edit(dest)
                     pureRenameCopy.discard(dest)
                     filesToChangeExecBit[dest] = diff['dst_mode']
+                if self.isWindows:
+                    # turn off read-only attribute
+                    os.chmod(dest, stat.S_IWRITE)
                 os.unlink(dest)
                 editedFiles.add(dest)
             elif modifier == "R":
@@ -1229,6 +1285,8 @@ class P4Submit(Command, P4UserMap):
                         p4_edit(dest)   # with move: already open, writable
                     filesToChangeExecBit[dest] = diff['dst_mode']
                 if not self.p4HasMoveCommand:
+                    if self.isWindows:
+                        os.chmod(dest, stat.S_IWRITE)
                     os.unlink(dest)
                     filesToDelete.add(src)
                 editedFiles.add(dest)
@@ -1248,7 +1306,7 @@ class P4Submit(Command, P4UserMap):
 
             # Patch failed, maybe it's just RCS keyword woes. Look through
             # the patch to see if that's possible.
-            if gitConfig("git-p4.attemptRCSCleanup","--bool") == "true":
+            if gitConfigBool("git-p4.attemptRCSCleanup"):
                 file = None
                 pattern = None
                 kwfiles = {}
@@ -1269,6 +1327,10 @@ class P4Submit(Command, P4UserMap):
                 for file in kwfiles:
                     if verbose:
                         print "zapping %s with %s" % (line,pattern)
+                    # File is being deleted, so not open in p4.  Must
+                    # disable the read-only bit on windows.
+                    if self.isWindows and file not in editedFiles:
+                        os.chmod(file, stat.S_IWRITE)
                     self.patchRCSKeywords(file, kwfiles[file])
                     fixed_rcs_keywords = True
 
@@ -1539,7 +1601,7 @@ class P4Submit(Command, P4UserMap):
             sys.exit(128)
 
         self.useClientSpec = False
-        if gitConfig("git-p4.useclientspec", "--bool") == "true":
+        if gitConfigBool("git-p4.useclientspec"):
             self.useClientSpec = True
         if self.useClientSpec:
             self.clientSpecDirs = getClientSpec()
@@ -1575,11 +1637,11 @@ class P4Submit(Command, P4UserMap):
         self.check()
 
         commits = []
-        for line in read_pipe_lines("git rev-list --no-merges %s..%s" % (self.origin, self.master)):
+        for line in read_pipe_lines(["git", "rev-list", "--no-merges", "%s..%s" % (self.origin, self.master)]):
             commits.append(line.strip())
         commits.reverse()
 
-        if self.preserveUser or (gitConfig("git-p4.skipUserNameCheck") == "true"):
+        if self.preserveUser or gitConfigBool("git-p4.skipUserNameCheck"):
             self.checkAuthorship = False
         else:
             self.checkAuthorship = True
@@ -1615,7 +1677,7 @@ class P4Submit(Command, P4UserMap):
         else:
             self.diffOpts += " -C%s" % detectCopies
 
-        if gitConfig("git-p4.detectCopiesHarder", "--bool") == "true":
+        if gitConfigBool("git-p4.detectCopiesHarder"):
             self.diffOpts += " --find-copies-harder"
 
         #
@@ -1699,7 +1761,7 @@ class P4Submit(Command, P4UserMap):
                                            "--format=format:%h %s",  c])
                 print "You will have to do 'git p4 sync' and rebase."
 
-        if gitConfig("git-p4.exportLabels", "--bool") == "true":
+        if gitConfigBool("git-p4.exportLabels"):
             self.exportLabels = True
 
         if self.exportLabels:
@@ -1969,7 +2031,6 @@ class P4Sync(Command, P4UserMap):
         self.syncWithOrigin = True
         self.importIntoRemotes = True
         self.maxChanges = ""
-        self.isWindows = (platform.system() == "Windows")
         self.keepRepoPath = False
         self.depotPaths = None
         self.p4BranchesInGit = []
@@ -2114,7 +2175,14 @@ class P4Sync(Command, P4UserMap):
             # operations.  utf16 is converted to ascii or utf8, perhaps.
             # But ascii text saved as -t utf16 is completely mangled.
             # Invoke print -o to get the real contents.
+            #
+            # On windows, the newlines will always be mangled by print, so put
+            # them back too.  This is not needed to the cygwin windows version,
+            # just the native "NT" type.
+            #
             text = p4_read_pipe(['print', '-q', '-o', '-', file['depotFile']])
+            if p4_version_string().find("/NT") >= 0:
+                text = text.replace("\r\n", "\n")
             contents = [ text ]
 
         if type_base == "apple":
@@ -2129,15 +2197,6 @@ class P4Sync(Command, P4UserMap):
             # non-mac machines can never find a use for apple filetype.
             print "\nIgnoring apple filetype file %s" % file['depotFile']
             return
-
-        # Perhaps windows wants unicode, utf16 newlines translated too;
-        # but this is not doing it.
-        if self.isWindows and type_base == "text":
-            mangled = []
-            for data in contents:
-                data = data.replace("\r\n", "\n")
-                mangled.append(data)
-            contents = mangled
 
         # Note that we do not try to de-mangle keywords on utf16 files,
         # even though in theory somebody may want that.
@@ -2616,7 +2675,8 @@ class P4Sync(Command, P4UserMap):
 
     def searchParent(self, parent, branch, target):
         parentFound = False
-        for blob in read_pipe_lines(["git", "rev-list", "--reverse", "--no-merges", parent]):
+        for blob in read_pipe_lines(["git", "rev-list", "--reverse",
+                                     "--no-merges", parent]):
             blob = blob.strip()
             if len(read_pipe(["git", "diff-tree", blob, target])) == 0:
                 parentFound = True
@@ -2687,7 +2747,7 @@ class P4Sync(Command, P4UserMap):
 
                         blob = None
                         if len(parent) > 0:
-                            tempBranch = os.path.join(self.tempBranchLocation, "%d" % (change))
+                            tempBranch = "%s/%d" % (self.tempBranchLocation, change)
                             if self.verbose:
                                 print "Creating temporary branch: " + tempBranch
                             self.commit(description, filesForCommit, tempBranch)
@@ -2801,7 +2861,7 @@ class P4Sync(Command, P4UserMap):
             # will use this after clone to set the variable
             self.useClientSpec_from_options = True
         else:
-            if gitConfig("git-p4.useclientspec", "--bool") == "true":
+            if gitConfigBool("git-p4.useclientspec"):
                 self.useClientSpec = True
         if self.useClientSpec:
             self.clientSpecDirs = getClientSpec()
@@ -3041,7 +3101,7 @@ class P4Sync(Command, P4UserMap):
                             sys.stdout.write("%s " % b)
                         sys.stdout.write("\n")
 
-        if gitConfig("git-p4.importLabels", "--bool") == "true":
+        if gitConfigBool("git-p4.importLabels"):
             self.importLabels = True
 
         if self.importLabels:
@@ -3159,6 +3219,7 @@ class P4Clone(P4Sync):
         self.cloneExclude = ["/"+p for p in self.cloneExclude]
         for p in depotPaths:
             if not p.startswith("//"):
+                sys.stderr.write('Depot paths must start with "//": %s\n' % p)
                 return False
 
         if not self.cloneDestination:
@@ -3173,7 +3234,9 @@ class P4Clone(P4Sync):
         init_cmd = [ "git", "init" ]
         if self.cloneBare:
             init_cmd.append("--bare")
-        subprocess.check_call(init_cmd)
+        retcode = subprocess.call(init_cmd)
+        if retcode:
+            raise CalledProcessError(retcode, init_cmd)
 
         if not P4Sync.run(self, depotPaths):
             return False

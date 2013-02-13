@@ -466,7 +466,7 @@ static void add_verbose_info(struct strbuf *out, struct ref_item *item,
 			     int verbose, int abbrev)
 {
 	struct strbuf subject = STRBUF_INIT, stat = STRBUF_INIT;
-	const char *sub = " **** invalid ref ****";
+	const char *sub = _(" **** invalid ref ****");
 	struct commit *commit = item->commit;
 
 	if (commit && !parse_commit(commit)) {
@@ -590,7 +590,7 @@ static int print_ref_list(int kinds, int detached, int verbose, int abbrev, stru
 		struct commit *filter;
 		filter = lookup_commit_reference_gently(merge_filter_ref, 0);
 		if (!filter)
-			die("object '%s' does not point to a commit",
+			die(_("object '%s' does not point to a commit"),
 			    sha1_to_hex(merge_filter_ref));
 
 		filter->object.flags |= UNINTERESTING;
@@ -706,11 +706,11 @@ static int edit_branch_description(const char *branch_name)
 	read_branch_desc(&buf, branch_name);
 	if (!buf.len || buf.buf[buf.len-1] != '\n')
 		strbuf_addch(&buf, '\n');
-	strbuf_addf(&buf,
-		    "# Please edit the description for the branch\n"
-		    "#   %s\n"
-		    "# Lines starting with '#' will be stripped.\n",
-		    branch_name);
+	strbuf_commented_addf(&buf,
+		    "Please edit the description for the branch\n"
+		    "  %s\n"
+		    "Lines starting with '%c' will be stripped.\n",
+		    branch_name, comment_line_char);
 	fp = fopen(git_path(edit_description), "w");
 	if ((fwrite(buf.buf, 1, buf.len, fp) < buf.len) || fclose(fp)) {
 		strbuf_release(&buf);
@@ -825,6 +825,9 @@ int cmd_branch(int argc, const char **argv, const char *prefix)
 	if (!delete && !rename && !edit_description && !new_upstream && !unset_upstream && argc == 0)
 		list = 1;
 
+	if (with_commit || merge_filter != NO_FILTER)
+		list = 1;
+
 	if (!!delete + !!rename + !!force_create + !!list + !!new_upstream + !!unset_upstream > 1)
 		usage_with_options(builtin_branch_usage, options);
 
@@ -837,9 +840,11 @@ int cmd_branch(int argc, const char **argv, const char *prefix)
 		colopts = 0;
 	}
 
-	if (delete)
+	if (delete) {
+		if (!argc)
+			die(_("branch name required"));
 		return delete_branches(argc, argv, delete > 1, kinds, quiet);
-	else if (list) {
+	} else if (list) {
 		int ret = print_ref_list(kinds, detached, verbose, abbrev,
 					 with_commit, argv);
 		print_columns(&output, colopts, NULL);
@@ -850,24 +855,25 @@ int cmd_branch(int argc, const char **argv, const char *prefix)
 		const char *branch_name;
 		struct strbuf branch_ref = STRBUF_INIT;
 
-		if (detached)
-			die("Cannot give description to detached HEAD");
-		if (!argc)
+		if (!argc) {
+			if (detached)
+				die(_("Cannot give description to detached HEAD"));
 			branch_name = head;
-		else if (argc == 1)
+		} else if (argc == 1)
 			branch_name = argv[0];
 		else
-			usage_with_options(builtin_branch_usage, options);
+			die(_("cannot edit description of more than one branch"));
 
 		strbuf_addf(&branch_ref, "refs/heads/%s", branch_name);
 		if (!ref_exists(branch_ref.buf)) {
 			strbuf_release(&branch_ref);
 
 			if (!argc)
-				return error("No commit on branch '%s' yet.",
+				return error(_("No commit on branch '%s' yet."),
 					     branch_name);
 			else
-				return error("No such branch '%s'.", branch_name);
+				return error(_("No branch named '%s'."),
+					     branch_name);
 		}
 		strbuf_release(&branch_ref);
 
@@ -879,7 +885,7 @@ int cmd_branch(int argc, const char **argv, const char *prefix)
 		else if (argc == 2)
 			rename_branch(argv[0], argv[1], rename > 1);
 		else
-			usage_with_options(builtin_branch_usage, options);
+			die(_("too many branches for a rename operation"));
 	} else if (new_upstream) {
 		struct branch *branch = branch_get(argv[0]);
 

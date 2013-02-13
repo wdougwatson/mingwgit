@@ -31,12 +31,12 @@
 #include "sequencer.h"
 
 static const char * const builtin_commit_usage[] = {
-	N_("git commit [options] [--] <filepattern>..."),
+	N_("git commit [options] [--] <pathspec>..."),
 	NULL
 };
 
 static const char * const builtin_status_usage[] = {
-	N_("git status [options] [--] <filepattern>..."),
+	N_("git status [options] [--] <pathspec>..."),
 	NULL
 };
 
@@ -733,15 +733,15 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 		if (cleanup_mode == CLEANUP_ALL)
 			status_printf(s, GIT_COLOR_NORMAL,
 				_("Please enter the commit message for your changes."
-				" Lines starting\nwith '#' will be ignored, and an empty"
-				" message aborts the commit.\n"));
+				  " Lines starting\nwith '%c' will be ignored, and an empty"
+				  " message aborts the commit.\n"), comment_line_char);
 		else /* CLEANUP_SPACE, that is. */
 			status_printf(s, GIT_COLOR_NORMAL,
 				_("Please enter the commit message for your changes."
-				" Lines starting\n"
-				"with '#' will be kept; you may remove them"
-				" yourself if you want to.\n"
-				"An empty message aborts the commit.\n"));
+				  " Lines starting\n"
+				  "with '%c' will be kept; you may remove them"
+				  " yourself if you want to.\n"
+				  "An empty message aborts the commit.\n"), comment_line_char);
 		if (only_include_assumed)
 			status_printf_ln(s, GIT_COLOR_NORMAL,
 					"%s", only_include_assumed);
@@ -946,24 +946,14 @@ static void handle_untracked_files_arg(struct wt_status *s)
 
 static const char *read_commit_message(const char *name)
 {
-	const char *out_enc, *out;
+	const char *out_enc;
 	struct commit *commit;
 
 	commit = lookup_commit_reference_by_name(name);
 	if (!commit)
 		die(_("could not lookup commit %s"), name);
 	out_enc = get_commit_output_encoding();
-	out = logmsg_reencode(commit, out_enc);
-
-	/*
-	 * If we failed to reencode the buffer, just copy it
-	 * byte for byte so the user can try to fix it up.
-	 * This also handles the case where input and output
-	 * encodings are identical.
-	 */
-	if (out == NULL)
-		out = xstrdup(commit->buffer);
-	return out;
+	return logmsg_reencode(commit, out_enc);
 }
 
 static int parse_and_validate_options(int argc, const char *argv[],

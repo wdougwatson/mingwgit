@@ -33,6 +33,18 @@ UI, Workflows & Features
  * Output from the tests is coloured using "green is okay, yellow is
    questionable, red is bad and blue is informative" scheme.
 
+ * Mention of "GIT/Git/git" in the documentation have been updated to
+   be more uniform and consistent.  The name of the system and the
+   concept it embodies is "Git"; the command the users type is "git".
+   All-caps "GIT" was merely a way to imitate "Git" typeset in small
+   caps in our ASCII text only documentation and to be avoided.
+
+ * The completion script (in contrib/completion) used to let the
+   default completer to suggest pathnames, which gave too many
+   irrelevant choices (e.g. "git add" would not want to add an
+   unmodified path).  It learnt to use a more git-aware logic to
+   enumerate only relevant ones.
+
  * In bare repositories, "git shortlog" and other commands now read
    mailmap files from the tip of the history, to help running these
    tools in server settings.
@@ -50,7 +62,29 @@ UI, Workflows & Features
    E.g. "foo/**/bar" matches "bar" in "foo" itself or in a
    subdirectory of "foo".
 
+ * When giving arguments without "--" disambiguation, object names
+   that come earlier on the command line must not be interpretable as
+   pathspecs and pathspecs that come later on the command line must
+   not be interpretable as object names.  This disambiguation rule has
+   been tweaked so that ":/" (no other string before or after) is
+   always interpreted as a pathspec; "git cmd -- :/" is no longer
+   needed, you can just say "git cmd :/".
+
+ * Various "hint" lines Git gives when it asks the user to edit
+   messages in the editor are commented out with '#' by default. The
+   core.commentchar configuration variable can be used to customize
+   this '#' to a different character.
+
+ * "git add -u" and "git add -A" without pathspec issues warning to
+   make users aware that they are only operating on paths inside the
+   subdirectory they are in.  Use ":/" (everything from the top) or
+   "." (everything from the $cwd) to disambiguate.
+
  * "git blame" (and "git diff") learned the "--no-follow" option.
+
+ * "git branch" now rejects some nonsense combinations of command line
+   arguments (e.g. giving more than one branch name to rename) with
+   more case-specific error messages.
 
  * "git check-ignore" command to help debugging .gitignore files has
    been added.
@@ -81,8 +115,18 @@ UI, Workflows & Features
    rewrite the names and email addresses of people using the mailmap
    mechanism.
 
+ * "git mergetool" and "git difftool" learned to list the available
+   tool backends in a more consistent manner.
+
+ * "git mergetool" is aware of TortoiseGitMerge now and uses it over
+   TortoiseMerge when available.
+
  * "git push" now requires "-f" to update a tag, even if it is a
    fast-forward, as tags are meant to be fixed points.
+
+ * Error messages from "git push" when it stops to prevent remote refs
+   from getting overwritten by mistake have been improved to explain
+   various situations separately.
 
  * "git push" will stop without doing anything if the new "pre-push"
    hook exists and exits with a failure.
@@ -112,7 +156,9 @@ Foreign Interface
 
  * A new remote helper to interact with bzr has been added to contrib/.
 
- * "git p4" got various bugfixes around its branch handling.
+ * "git p4" got various bugfixes around its branch handling.  It is
+   also made usable with Python 2.4/2.5.  In addition, its various
+   portability issues for Cygwin have been addressed.
 
  * The remote helper to interact with Hg in contrib/ has seen a few
    fixes.
@@ -125,6 +171,11 @@ Performance, Internal Implementation, etc.
 
  * Matching paths with common forms of pathspecs that contain wildcard
    characters has been optimized further.
+
+ * We stopped paying attention to $GIT_CONFIG environment that points
+   at a single configuration file from any command other than "git config"
+   quite a while ago, but "git clone" internally set, exported, and
+   then unexported the variable during its operation unnecessarily.
 
  * "git reset" internals has been reworked and should be faster in
    general. We tried to be careful not to break any behaviour but
@@ -153,6 +204,13 @@ Performance, Internal Implementation, etc.
    USE_WILDMATCH, using the resulting Git daily and reporting when you
    find breakages, you can help us get closer to that goal.
 
+ * Some reimplementations of Git do not write all the stat info back
+   to the index due to their implementation limitations (e.g. jgit).
+   A configuration option can tell Git to ignore changes to most of
+   the stat fields and only pay attention to mtime and size, which
+   these implementations can reliably update.  This can be used to
+   avoid excessive revalidation of contents.
+
 
 Also contains minor documentation updates and code clean-ups.
 
@@ -177,7 +235,7 @@ details).
    attempt to kill a process spawned in the editor that was in turn
    launched by Git with SIGINT (or SIGQUIT), as Git would catch that
    signal and die.  We ignore these signals now.
-   (merge 1250857 pf/editor-ignore-sigint later to maint).
+   (merge 0398fc34 pf/editor-ignore-sigint later to maint).
 
  * A child process that was killed by a signal (e.g. SIGINT) was
    reported in an inconsistent way depending on how the process was
@@ -186,25 +244,44 @@ details).
  * After failing to create a temporary file using mkstemp(), failing
    pathname was not reported correctly on some platforms.
 
+ * We used to stuff "user@" and then append what we read from
+   /etc/mailname to come up with a default e-mail ident, but a bug
+   lost the "user@" part.
+
  * The attribute mechanism didn't allow limiting attributes to be
    applied to only a single directory itself with "path/" like the
    exclude mechanism does.  The initial implementation of this that
    was merged to 'maint' and 1.8.1.2 was with a severe performance
    degradations and needs to merge a fix-up topic.
-   (merge 9db9eec nd/fix-directory-attrs-off-by-one later to maint).
+
+ * The smart HTTP clients forgot to verify the content-type that comes
+   back from the server side to make sure that the request is being
+   handled properly.
+   (merge 3443db5 sp/smart-http-content-type-check later to maint).
 
  * "git am" did not parse datestamp correctly from Hg generated patch,
    when it is run in a locale outside C (or en).
-   (merge 5185b97 dl/am-hg-locale later to maint).
 
  * "git apply" misbehaved when fixing whitespace breakages by removing
    excess trailing blank lines.
+
+ * "git apply --summary" has been taught to make sure the similarity
+   value shown in its output is sensible, even when the input had a
+   bogus value.
+   (merge afcb6ac jk/apply-similaritly-parsing later to maint).
 
  * A tar archive created by "git archive" recorded a directory in a
    way that made NetBSD's implementation of "tar" sometimes unhappy.
 
  * "git archive" did not record uncompressed size in the header when
    streaming a zip archive, which confused some implementations of unzip.
+
+ * "git archive" did not parse configuration values in tar.* namespace
+   correctly.
+   (merge b3873c3 jk/config-parsing-cleanup later to maint).
+
+ * Attempt to "branch --edit-description" an existing branch, while
+   being on a detached HEAD, errored out.
 
  * "git clean" showed what it was going to do, but sometimes end up
    finding that it was not allowed to do so, which resulted in a
@@ -218,6 +295,24 @@ details).
    failed to remove the real location of the $GIT_DIR it created.
    This was most visible when interrupting a submodule update.
 
+ * We used to have an arbitrary 32 limit for combined diff input,
+   resulting in incorrect number of leading colons shown when showing
+   the "--raw --cc" output.
+   (merge edbc00e jc/combine-diff-many-parents later to maint).
+
+ * "git fetch --depth" was broken in at least three ways.  The
+   resulting history was deeper than specified by one commit, it was
+   unclear how to wipe the shallowness of the repository with the
+   command, and documentation was misleading.
+   (merge cfb70e1 nd/fetch-depth-is-broken later to maint).
+
+ * "git log --all -p" that walked refs/notes/textconv/ ref can later
+   try to use the textconv data incorrectly after it gets freed.
+   (merge be5c9fb jk/read-commit-buffer-data-after-free later to maint).
+
+ * We forgot to close the file descriptor reading from "gpg" output,
+   killing "git log --show-signature" on a long history.
+
  * The way "git svn" asked for password using SSH_ASKPASS and
    GIT_ASKPASS was not in line with the rest of the system.
 
@@ -230,6 +325,9 @@ details).
  * "git pack-refs" that ran in parallel to another process that
    created new refs had a nasty race.
 
+ * Rebasing the history of superproject with change in the submodule
+   has been broken since v1.7.12.
+
  * After "git add -N" and then writing a tree object out of the
    index, the cache-tree data structure got corrupted.
 
@@ -239,7 +337,6 @@ details).
 
  * "git rebase --preserve-merges" lost empty merges in recent versions
    of Git.
-   (merge 9869778 ph/rebase-preserve-all-merges later to maint).
 
  * "git merge --no-edit" computed who were involved in the work done
    on the side branch, even though that information is to be discarded
@@ -248,6 +345,9 @@ details).
  * "git merge" started calling prepare-commit-msg hook like "git
    commit" does some time ago, but forgot to pay attention to the exit
    status of the hook.
+
+ * A failure to push due to non-ff while on an unborn branch
+   dereferenced a NULL pointer when showing an error message.
 
  * When users spell "cc:" in lowercase in the fake "header" in the
    trailer part, "git send-email" failed to pick up the addresses from
@@ -265,6 +365,11 @@ details).
    "highlight" filter lost known-to-be-safe control characters by
    mistake.
 
+ * "gitweb" pages served over HTTPS, when configured to show picon or
+   gravatar, referred to these external resources to be fetched via
+   HTTP, resulting in mixed contents warning in browsers.
+   (merge 5748558 ab/gitweb-use-same-scheme later to maint).
+
  * When a line to be wrapped has a solid run of non space characters
    whose length exactly is the wrap width, "git shortlog -w" failed
    to add a newline after such a line.
@@ -277,7 +382,6 @@ details).
 
  * Command line completion code was inadvertently made incompatible with
    older versions of bash by using a newer array notation.
-   (merge 50c5885 bc/fix-array-syntax-for-3.0-in-completion-bash later to maint).
 
  * Some shells do not behave correctly when IFS is unset; work it
    around by explicitly setting it to the default value.
@@ -289,12 +393,20 @@ details).
  * When autoconf is used, any build on a different commit always ran
    "config.status --recheck" even when unnecessary.
 
+ * A fix was added to the build procedure to work around buggy
+   versions of ccache broke the auto-generation of dependencies, which
+   unfortunately is still relevant because some people use ancient
+   distros.
+
+ * The autoconf subsystem passed --mandir down to generated
+   config.mak.autogen but forgot to do the same for --htmldir.
+   (merge fc1c541 ct/autoconf-htmldir later to maint).
+
  * We have been carrying a translated and long-unmaintained copy of an
    old version of the tutorial; removed.
 
  * t0050 had tests expecting failures from a bug that was fixed some
    time ago.
-   (merge 336e2e2 tb/t0050-maint later to maint).
 
  * t4014, t9502 and t0200 tests had various portability issues that
    broke on OpenBSD.
@@ -306,3 +418,6 @@ details).
    need to be in the cvsadmin group on NetBSD 6.0).
 
  * t9020 and t9810 had a few non-portable shell script construct.
+
+ * Scripts to test bash completion was inherently flaky as it was
+   affected by whatever random things the user may have on $PATH.
