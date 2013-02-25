@@ -43,6 +43,9 @@ all::
 # Define EXPATDIR=/foo/bar if your expat header and library files are in
 # /foo/bar/include and /foo/bar/lib directories.
 #
+# Define EXPAT_NEEDS_XMLPARSE_H if you have an old version of expat (e.g.,
+# 1.1 or 1.2) that provides xmlparse.h instead of expat.h.
+#
 # Define NO_GETTEXT if you don't want Git output to be translated.
 # A translated Git requires GNU libintl or another gettext implementation,
 # plus libintl-perl at runtime.
@@ -480,9 +483,38 @@ SCRIPT_PERL += git-svn.perl
 SCRIPT_PYTHON += git-remote-testpy.py
 SCRIPT_PYTHON += git-p4.py
 
-SCRIPTS = $(patsubst %.sh,%,$(SCRIPT_SH)) \
-	  $(patsubst %.perl,%,$(SCRIPT_PERL)) \
-	  $(patsubst %.py,%,$(SCRIPT_PYTHON)) \
+# Generated files for scripts
+SCRIPT_SH_GEN = $(patsubst %.sh,%,$(SCRIPT_SH))
+SCRIPT_PERL_GEN = $(patsubst %.perl,%,$(SCRIPT_PERL))
+SCRIPT_PYTHON_GEN = $(patsubst %.py,%,$(SCRIPT_PYTHON))
+
+# Individual rules to allow e.g.
+# "make -C ../.. SCRIPT_PERL=contrib/foo/bar.perl build-perl-script"
+# from subdirectories like contrib/*/
+.PHONY: build-perl-script build-sh-script build-python-script
+build-perl-script: $(SCRIPT_PERL_GEN)
+build-sh-script: $(SCRIPT_SH_GEN)
+build-python-script: $(SCRIPT_PYTHON_GEN)
+
+.PHONY: install-perl-script install-sh-script install-python-script
+install-sh-script: $(SCRIPT_SH_GEN)
+	$(INSTALL) $(SCRIPT_SH_GEN) '$(DESTDIR_SQ)$(gitexec_instdir_SQ)'
+install-perl-script: $(SCRIPT_PERL_GEN)
+	$(INSTALL) $(SCRIPT_PERL_GEN) '$(DESTDIR_SQ)$(gitexec_instdir_SQ)'
+install-python-script: $(SCRIPT_PYTHON_GEN)
+	$(INSTALL) $(SCRIPT_PYTHON_GEN) '$(DESTDIR_SQ)$(gitexec_instdir_SQ)'
+
+.PHONY: clean-perl-script clean-sh-script clean-python-script
+clean-sh-script:
+	$(RM) $(SCRIPT_SH_GEN)
+clean-perl-script:
+	$(RM) $(SCRIPT_PERL_GEN)
+clean-python-script:
+	$(RM) $(SCRIPT_PYTHON_GEN)
+
+SCRIPTS = $(SCRIPT_SH_GEN) \
+	  $(SCRIPT_PERL_GEN) \
+	  $(SCRIPT_PYTHON_GEN) \
 	  git-instaweb
 
 ETAGS_TARGET = TAGS
@@ -1088,6 +1120,9 @@ else
 			EXPAT_LIBEXPAT = -L$(EXPATDIR)/$(lib) $(CC_LD_DYNPATH)$(EXPATDIR)/$(lib) -lexpat
 		else
 			EXPAT_LIBEXPAT = -lexpat
+		endif
+		ifdef EXPAT_NEEDS_XMLPARSE_H
+			BASIC_CFLAGS += -DEXPAT_NEEDS_XMLPARSE_H
 		endif
 	endif
 endif
@@ -2414,8 +2449,7 @@ clean: profile-clean
 		builtin/*.o $(LIB_FILE) $(XDIFF_LIB) $(VCSSVN_LIB)
 	$(RM) $(ALL_PROGRAMS) $(SCRIPT_LIB) $(BUILT_INS) git$X
 	$(RM) $(TEST_PROGRAMS)
-	$(RM) -r bin-wrappers
-	$(RM) -r $(dep_dirs)
+	$(RM) -r bin-wrappers $(dep_dirs)
 	$(RM) -r po/build/
 	$(RM) *.spec *.pyc *.pyo */*.pyc */*.pyo common-cmds.h $(ETAGS_TARGET) tags cscope*
 	$(RM) -r $(GIT_TARNAME) .doc-tmp-dir

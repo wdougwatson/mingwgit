@@ -4,8 +4,8 @@ Git v1.8.2 Release Notes
 Backward compatibility notes
 ----------------------------
 
-In the upcoming major release (tentatively called 1.8.2), we will
-change the behavior of the "git push" command.
+In the next major release Git 2.0 (not *this* one), we will change the
+behavior of the "git push" command.
 
 When "git push [$there]" does not say what to push, we have used the
 traditional "matching" semantics so far (all your branches were sent
@@ -21,6 +21,18 @@ you are pushing points at a commit that is a decendant of a commit
 that the old tag v1.2.3 points at.  This was found to be error prone
 and starting with this release, any attempt to update an existing
 ref under refs/tags/ hierarchy will fail, without "--force".
+
+When "git add -u" and "git add -A", that does not specify what paths
+to add on the command line, is run from inside a subdirectory, the
+scope of the operation has always been limited to the subirectory.
+Many users found this counter-intuitive, given that "git commit -a"
+and other commands operate on the entire tree regardless of where you
+are. In this release, these commands give warning in such a case and
+encourage the user to say "git add -u/-A ." instead when restricting
+the scope to the current directory. At Git 2.0 (not *this* one), we
+plan to change these commands without pathspec to operate on the
+entire tree, and training your fingers to type "." will protect you
+against the future change.
 
 
 Updates since v1.8.1
@@ -95,6 +107,10 @@ UI, Workflows & Features
  * "git commit" can be told to use --cleanup=whitespace by setting the
    configuration variable commit.cleanup to 'whitespace'.
 
+ * "git diff" and other Porcelain commands can be told to use a
+   non-standard algorithm by setting diff.algorithm configuration
+   variable.
+
  * "git fetch --mirror" and fetch that uses other forms of refspec
    with wildcard used to attempt to update a symbolic ref that match
    the wildcard on the receiving end, which made little sense (the
@@ -114,6 +130,13 @@ UI, Workflows & Features
  * "git log" and friends can be told with --use-mailmap option to
    rewrite the names and email addresses of people using the mailmap
    mechanism.
+
+ * "git log --cc --graph" now shows the combined diff output with the
+   ancestry graph.
+
+ * "git log --grep=<pattern>" honors i18n.logoutputencoding to look
+   for the pattern after fixing the log message to the specified
+   encoding.
 
  * "git mergetool" and "git difftool" learned to list the available
    tool backends in a more consistent manner.
@@ -144,9 +167,17 @@ UI, Workflows & Features
    you do not have any commits in your history, but it now gives you
    an empty index (to match non-existent commit you are not even on).
 
+ * "git status" says what branch is being bisected or rebased when
+   able, not just "bisecting" or "rebasing".
+
  * "git submodule" started learning a new mode to integrate with the
    tip of the remote branch (as opposed to integrating with the commit
    recorded in the superproject's gitlink).
+
+ * "git upload-pack" which implements the service "ls-remote" and
+   "fetch" talk to can be told to hide ref hierarchies the server
+   side internally uses (and that clients have no business learning
+   about) with transfer.hiderefs configuration.
 
 
 Foreign Interface
@@ -211,6 +242,13 @@ Performance, Internal Implementation, etc.
    these implementations can reliably update.  This can be used to
    avoid excessive revalidation of contents.
 
+ * Some platforms ship with old version of expat where xmlparse.h
+   needs to be included instead of expat.h; the build procedure has
+   been taught about this.
+
+ * "make clean" on platforms that cannot compute header dependencies
+   on the fly did not work with implementations of "rm" that do not
+   like an empty argument list.
 
 Also contains minor documentation updates and code clean-ups.
 
@@ -294,6 +332,9 @@ details).
  * When "git clone --separate-git-dir=$over_there" is interrupted, it
    failed to remove the real location of the $GIT_DIR it created.
    This was most visible when interrupting a submodule update.
+
+ * "git cvsimport" mishandled timestamps at DST boundary.
+   (merge 48c9162 bw/get-tz-offset-perl later to maint).
 
  * We used to have an arbitrary 32 limit for combined diff input,
    resulting in incorrect number of leading colons shown when showing
@@ -382,6 +423,11 @@ details).
 
  * Command line completion code was inadvertently made incompatible with
    older versions of bash by using a newer array notation.
+
+ * "git push" was taught to refuse updating the branch that is
+   currently checked out long time ago, but the user manual was left
+   stale.
+   (merge d9be248 wk/man-deny-current-branch-is-default-these-days later to maint).
 
  * Some shells do not behave correctly when IFS is unset; work it
    around by explicitly setting it to the default value.
