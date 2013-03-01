@@ -101,8 +101,6 @@ all::
 #
 # Define NO_MKSTEMPS if you don't have mkstemps in the C library.
 #
-# Define NO_STRTOK_R if you don't have strtok_r in the C library.
-#
 # Define NO_FNMATCH if you don't have fnmatch in the C library.
 #
 # Define NO_FNMATCH_CASEFOLD if your fnmatch function doesn't have the
@@ -1249,10 +1247,6 @@ endif
 ifdef NO_STRTOULL
 	COMPAT_CFLAGS += -DNO_STRTOULL
 endif
-ifdef NO_STRTOK_R
-	COMPAT_CFLAGS += -DNO_STRTOK_R
-	COMPAT_OBJS += compat/strtok_r.o
-endif
 ifdef NO_FNMATCH
 	COMPAT_CFLAGS += -Icompat/fnmatch
 	COMPAT_CFLAGS += -DNO_FNMATCH
@@ -1821,12 +1815,14 @@ $(patsubst %.py,%,$(SCRIPT_PYTHON)): % : unimplemented.sh
 	mv $@+ $@
 endif # NO_PYTHON
 
+CONFIGURE_RECIPE = $(RM) configure configure.ac+ && \
+		   sed -e 's/@@GIT_VERSION@@/$(GIT_VERSION)/g' \
+			configure.ac >configure.ac+ && \
+		   autoconf -o configure configure.ac+ && \
+		   $(RM) configure.ac+
+
 configure: configure.ac GIT-VERSION-FILE
-	$(QUIET_GEN)$(RM) $@ $<+ && \
-	sed -e 's/@@GIT_VERSION@@/$(GIT_VERSION)/g' \
-	    $< > $<+ && \
-	autoconf -o $@ $<+ && \
-	$(RM) $<+
+	$(QUIET_GEN)$(CONFIGURE_RECIPE)
 
 ifdef AUTOCONFIGURED
 # We avoid depending on 'configure' here, because it gets rebuilt
@@ -1835,7 +1831,7 @@ ifdef AUTOCONFIGURED
 # do want to recheck when the platform/environment detection logic
 # changes, hence this depends on configure.ac.
 config.status: configure.ac
-	$(QUIET_GEN)$(MAKE) configure && \
+	$(QUIET_GEN)$(CONFIGURE_RECIPE) && \
 	if test -f config.status; then \
 	  ./config.status --recheck; \
 	else \
