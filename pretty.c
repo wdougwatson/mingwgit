@@ -345,7 +345,7 @@ static int needs_rfc2047_encoding(const char *line, int len,
 	return 0;
 }
 
-static void add_rfc2047(struct strbuf *sb, const char *line, int len,
+static void add_rfc2047(struct strbuf *sb, const char *line, size_t len,
 		       const char *encoding, enum rfc2047_type type)
 {
 	static const int max_encoded_length = 76; /* per rfc2047 */
@@ -355,9 +355,22 @@ static void add_rfc2047(struct strbuf *sb, const char *line, int len,
 	strbuf_grow(sb, len * 3 + strlen(encoding) + 100);
 	strbuf_addf(sb, "=?%s?q?", encoding);
 	line_len += strlen(encoding) + 5; /* 5 for =??q? */
-	for (i = 0; i < len; i++) {
-		unsigned ch = line[i] & 0xFF;
-		int is_special = is_rfc2047_special(ch, type);
+
+	while (len) {
+		/*
+		 * RFC 2047, section 5 (3):
+		 *
+		 * Each 'encoded-word' MUST represent an integral number of
+		 * characters.  A multi-octet character may not be split across
+		 * adjacent 'encoded- word's.
+		 */
+		const unsigned char *p = (const unsigned char *)line;
+		int chrlen = mbs_chrlen(&line, &len, encoding);
+		int is_special = (chrlen > 1) || is_rfc2047_special(*p, type);
+
+		/* "=%02X" * chrlen, or the byte itself */
+		const char *encoded_fmt = is_special ? "=%02X"    : "%c";
+		int	    encoded_len = is_special ? 3 * chrlen : 1;
 
 		/*
 		 * According to RFC 2047, we could encode the special character
@@ -367,18 +380,15 @@ static void add_rfc2047(struct strbuf *sb, const char *line, int len,
 		 * causes ' ' to be encoded as '=20', avoiding this problem.
 		 */
 
-		if (line_len + 2 + (is_special ? 3 : 1) > max_encoded_length) {
+		if (line_len + encoded_len + 2 > max_encoded_length) {
+			/* It won't fit with trailing "?=" --- break the line */
 			strbuf_addf(sb, "?=\n =?%s?q?", encoding);
 			line_len = strlen(encoding) + 5 + 1; /* =??q? plus SP */
 		}
 
-		if (is_special) {
-			strbuf_addf(sb, "=%02X", ch);
-			line_len += 3;
-		} else {
-			strbuf_addch(sb, ch);
-			line_len++;
-		}
+		for (i = 0; i < chrlen; i++)
+			strbuf_addf(sb, encoded_fmt, p[i]);
+		line_len += encoded_len;
 	}
 	strbuf_addstr(sb, "?=");
 }
@@ -759,8 +769,10 @@ struct format_commit_context {
 	unsigned commit_signature_parsed:1;
 	struct {
 		char *gpg_output;
+		char *gpg_status;
 		char good_bad;
 		char *signer;
+		char *key;
 	} signature;
 	char *message;
 	size_t width, indent1, indent2;
@@ -948,13 +960,13 @@ static struct {
 	char result;
 	const char *check;
 } signature_check[] = {
-	{ 'G', ": Good signature from " },
-	{ 'B', ": BAD signature from " },
+	{ 'G', "\n[GNUPG:] GOODSIG " },
+	{ 'B', "\n[GNUPG:] BADSIG " },
 };
 
 static void parse_signature_lines(struct format_commit_context *ctx)
 {
-	const char *buf = ctx->signature.gpg_output;
+	const char *buf = ctx->signature.gpg_status;
 	int i;
 
 	for (i = 0; i < ARRAY_SIZE(signature_check); i++) {
@@ -964,6 +976,8 @@ static void parse_signature_lines(struct format_commit_context *ctx)
 			continue;
 		ctx->signature.good_bad = signature_check[i].result;
 		found += strlen(signature_check[i].check);
+		ctx->signature.key = xmemdupz(found, 16);
+		found += 17;
 		next = strchrnul(found, '\n');
 		ctx->signature.signer = xmemdupz(found, next - found);
 		break;
@@ -975,6 +989,7 @@ static void parse_commit_signature(struct format_commit_context *ctx)
 	struct strbuf payload = STRBUF_INIT;
 	struct strbuf signature = STRBUF_INIT;
 	struct strbuf gpg_output = STRBUF_INIT;
+	struct strbuf gpg_status = STRBUF_INIT;
 	int status;
 
 	ctx->commit_signature_parsed = 1;
@@ -984,13 +999,15 @@ static void parse_commit_signature(struct format_commit_context *ctx)
 		goto out;
 	status = verify_signed_buffer(payload.buf, payload.len,
 				      signature.buf, signature.len,
-				      &gpg_output);
+				      &gpg_output, &gpg_status);
 	if (status && !gpg_output.len)
 		goto out;
 	ctx->signature.gpg_output = strbuf_detach(&gpg_output, NULL);
+	ctx->signature.gpg_status = strbuf_detach(&gpg_status, NULL);
 	parse_signature_lines(ctx);
 
  out:
+	strbuf_release(&gpg_status);
 	strbuf_release(&gpg_output);
 	strbuf_release(&payload);
 	strbuf_release(&signature);
@@ -1199,6 +1216,10 @@ static size_t format_commit_one(struct strbuf *sb, const char *placeholder,
 		case 'S':
 			if (c->signature.signer)
 				strbuf_addstr(sb, c->signature.signer);
+			break;
+		case 'K':
+			if (c->signature.key)
+				strbuf_addstr(sb, c->signature.key);
 			break;
 		}
 		return 2;

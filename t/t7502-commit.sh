@@ -171,18 +171,25 @@ test_expect_success 'verbose' '
 
 test_expect_success 'verbose respects diff config' '
 
-	git config color.diff always &&
+	test_config color.diff always &&
 	git status -v >actual &&
-	grep "\[1mdiff --git" actual &&
-	git config --unset color.diff
+	grep "\[1mdiff --git" actual
+'
+
+mesg_with_comment_and_newlines='
+# text
+
+'
+
+test_expect_success 'prepare file with comment line and trailing newlines'  '
+	printf "%s" "$mesg_with_comment_and_newlines" >expect
 '
 
 test_expect_success 'cleanup commit messages (verbatim option,-t)' '
 
 	echo >>negative &&
-	{ echo;echo "# text";echo; } >expect &&
-	git commit --cleanup=verbatim -t expect -a &&
-	git cat-file -p HEAD |sed -e "1,/^\$/d" |head -n 3 >actual &&
+	git commit --cleanup=verbatim --no-status -t expect -a &&
+	git cat-file -p HEAD |sed -e "1,/^\$/d" >actual &&
 	test_cmp expect actual
 
 '
@@ -199,7 +206,7 @@ test_expect_success 'cleanup commit messages (verbatim option,-F)' '
 test_expect_success 'cleanup commit messages (verbatim option,-m)' '
 
 	echo >>negative &&
-	git commit --cleanup=verbatim -m "$(cat expect)" -a &&
+	git commit --cleanup=verbatim -m "$mesg_with_comment_and_newlines" -a &&
 	git cat-file -p HEAD |sed -e "1,/^\$/d">actual &&
 	test_cmp expect actual
 
@@ -255,32 +262,40 @@ test_expect_success 'cleanup commit message (fail on invalid cleanup mode config
 test_expect_success 'cleanup commit message (no config and no option uses default)' '
 	echo content >>file &&
 	git add file &&
-	test_set_editor "$TEST_DIRECTORY"/t7500/add-content-and-comment &&
-	git commit --no-status &&
+	(
+	  test_set_editor "$TEST_DIRECTORY"/t7500/add-content-and-comment &&
+	  git commit --no-status
+	) &&
 	commit_msg_is "commit message"
 '
 
 test_expect_success 'cleanup commit message (option overrides default)' '
 	echo content >>file &&
 	git add file &&
-	test_set_editor "$TEST_DIRECTORY"/t7500/add-content-and-comment &&
-	git commit --cleanup=whitespace --no-status &&
+	(
+	  test_set_editor "$TEST_DIRECTORY"/t7500/add-content-and-comment &&
+	  git commit --cleanup=whitespace --no-status
+	) &&
 	commit_msg_is "commit message # comment"
 '
 
 test_expect_success 'cleanup commit message (config overrides default)' '
 	echo content >>file &&
 	git add file &&
-	test_set_editor "$TEST_DIRECTORY"/t7500/add-content-and-comment &&
-	git -c commit.cleanup=whitespace commit --no-status &&
+	(
+	  test_set_editor "$TEST_DIRECTORY"/t7500/add-content-and-comment &&
+	  git -c commit.cleanup=whitespace commit --no-status
+	) &&
 	commit_msg_is "commit message # comment"
 '
 
 test_expect_success 'cleanup commit message (option overrides config)' '
 	echo content >>file &&
 	git add file &&
-	test_set_editor "$TEST_DIRECTORY"/t7500/add-content-and-comment &&
-	git -c commit.cleanup=whitespace commit --cleanup=default &&
+	(
+	  test_set_editor "$TEST_DIRECTORY"/t7500/add-content-and-comment &&
+	  git -c commit.cleanup=whitespace commit --cleanup=default
+	) &&
 	commit_msg_is "commit message"
 '
 
@@ -409,6 +424,18 @@ test_expect_success 'A single-liner subject with a token plus colon is not a foo
 
 '
 
+test_expect_success 'commit -s places sob on third line after two empty lines' '
+	git commit -s --allow-empty --allow-empty-message &&
+	cat <<-EOF >expect &&
+
+
+	Signed-off-by: $GIT_COMMITTER_NAME <$GIT_COMMITTER_EMAIL>
+
+	EOF
+	sed -e "/^#/d" -e "s/^:.*//" .git/COMMIT_EDITMSG >actual &&
+	test_cmp expect actual
+'
+
 write_script .git/FAKE_EDITOR <<\EOF
 mv "$1" "$1.orig"
 (
@@ -418,16 +445,6 @@ mv "$1" "$1.orig"
 EOF
 
 echo '## Custom template' >template
-
-clear_config () {
-	(
-		git config --unset-all "$1"
-		case $? in
-		0|5)	exit 0 ;;
-		*)	exit 1 ;;
-		esac
-	)
-}
 
 try_commit () {
 	git reset --hard &&
@@ -444,67 +461,57 @@ try_commit () {
 try_commit_status_combo () {
 
 	test_expect_success 'commit' '
-		clear_config commit.status &&
 		try_commit "" &&
 		test_i18ngrep "^# Changes to be committed:" .git/COMMIT_EDITMSG
 	'
 
 	test_expect_success 'commit' '
-		clear_config commit.status &&
 		try_commit "" &&
 		test_i18ngrep "^# Changes to be committed:" .git/COMMIT_EDITMSG
 	'
 
 	test_expect_success 'commit --status' '
-		clear_config commit.status &&
 		try_commit --status &&
 		test_i18ngrep "^# Changes to be committed:" .git/COMMIT_EDITMSG
 	'
 
 	test_expect_success 'commit --no-status' '
-		clear_config commit.status &&
 		try_commit --no-status &&
 		test_i18ngrep ! "^# Changes to be committed:" .git/COMMIT_EDITMSG
 	'
 
 	test_expect_success 'commit with commit.status = yes' '
-		clear_config commit.status &&
-		git config commit.status yes &&
+		test_config commit.status yes &&
 		try_commit "" &&
 		test_i18ngrep "^# Changes to be committed:" .git/COMMIT_EDITMSG
 	'
 
 	test_expect_success 'commit with commit.status = no' '
-		clear_config commit.status &&
-		git config commit.status no &&
+		test_config commit.status no &&
 		try_commit "" &&
 		test_i18ngrep ! "^# Changes to be committed:" .git/COMMIT_EDITMSG
 	'
 
 	test_expect_success 'commit --status with commit.status = yes' '
-		clear_config commit.status &&
-		git config commit.status yes &&
+		test_config commit.status yes &&
 		try_commit --status &&
 		test_i18ngrep "^# Changes to be committed:" .git/COMMIT_EDITMSG
 	'
 
 	test_expect_success 'commit --no-status with commit.status = yes' '
-		clear_config commit.status &&
-		git config commit.status yes &&
+		test_config commit.status yes &&
 		try_commit --no-status &&
 		test_i18ngrep ! "^# Changes to be committed:" .git/COMMIT_EDITMSG
 	'
 
 	test_expect_success 'commit --status with commit.status = no' '
-		clear_config commit.status &&
-		git config commit.status no &&
+		test_config commit.status no &&
 		try_commit --status &&
 		test_i18ngrep "^# Changes to be committed:" .git/COMMIT_EDITMSG
 	'
 
 	test_expect_success 'commit --no-status with commit.status = no' '
-		clear_config commit.status &&
-		git config commit.status no &&
+		test_config commit.status no &&
 		try_commit --no-status &&
 		test_i18ngrep ! "^# Changes to be committed:" .git/COMMIT_EDITMSG
 	'
@@ -518,8 +525,7 @@ use_template="-t template"
 try_commit_status_combo
 
 test_expect_success 'commit --status with custom comment character' '
-	test_when_finished "git config --unset core.commentchar" &&
-	git config core.commentchar ";" &&
+	test_config core.commentchar ";" &&
 	try_commit --status &&
 	test_i18ngrep "^; Changes to be committed:" .git/COMMIT_EDITMSG
 '

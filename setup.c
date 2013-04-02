@@ -207,10 +207,11 @@ static const char *prefix_pathspec(const char *prefix, int prefixlen, const char
 		     *copyfrom && *copyfrom != ')';
 		     copyfrom = nextat) {
 			size_t len = strcspn(copyfrom, ",)");
-			if (copyfrom[len] == ')')
-				nextat = copyfrom + len;
-			else
+			if (copyfrom[len] == ',')
 				nextat = copyfrom + len + 1;
+			else
+				/* handle ')' and '\0' */
+				nextat = copyfrom + len;
 			if (!len)
 				continue;
 			for (i = 0; i < ARRAY_SIZE(pathspec_magic); i++)
@@ -223,8 +224,9 @@ static const char *prefix_pathspec(const char *prefix, int prefixlen, const char
 				die("Invalid pathspec magic '%.*s' in '%s'",
 				    (int) len, copyfrom, elt);
 		}
-		if (*copyfrom == ')')
-			copyfrom++;
+		if (*copyfrom != ')')
+			die("Missing ')' at the end of pathspec magic in '%s'", elt);
+		copyfrom++;
 	} else {
 		/* shorthand */
 		for (copyfrom = elt + 1;
@@ -523,6 +525,12 @@ static const char *setup_explicit_git_dir(const char *gitdirenv,
 			set_git_work_tree(core_worktree);
 		}
 	}
+	else if (!git_env_bool(GIT_IMPLICIT_WORK_TREE_ENVIRONMENT, 1)) {
+		/* #16d */
+		set_git_dir(gitdirenv);
+		free(gitfile);
+		return NULL;
+	}
 	else /* #2, #10 */
 		set_git_work_tree(".");
 
@@ -600,6 +608,8 @@ static const char *setup_bare_git_dir(char *cwd, int offset, int len, int *nongi
 
 	if (check_repository_format_gently(".", nongit_ok))
 		return NULL;
+
+	setenv(GIT_IMPLICIT_WORK_TREE_ENVIRONMENT, "0", 1);
 
 	/* --work-tree is set without --git-dir; use discovered one */
 	if (getenv(GIT_WORK_TREE_ENVIRONMENT) || git_work_tree_cfg) {
@@ -794,9 +804,9 @@ const char *setup_git_directory_gently(int *nongit_ok)
 
 	prefix = setup_git_directory_gently_1(nongit_ok);
 	if (prefix)
-		setenv("GIT_PREFIX", prefix, 1);
+		setenv(GIT_PREFIX_ENVIRONMENT, prefix, 1);
 	else
-		setenv("GIT_PREFIX", "", 1);
+		setenv(GIT_PREFIX_ENVIRONMENT, "", 1);
 
 	if (startup_info) {
 		startup_info->have_repository = !nongit_ok || !*nongit_ok;

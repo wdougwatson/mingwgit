@@ -803,11 +803,38 @@ static const char *parse_ref_line(char *line, unsigned char *sha1)
 	return line;
 }
 
+/*
+ * Read f, which is a packed-refs file, into dir.
+ *
+ * A comment line of the form "# pack-refs with: " may contain zero or
+ * more traits. We interpret the traits as follows:
+ *
+ *   No traits:
+ *
+ *      Probably no references are peeled. But if the file contains a
+ *      peeled value for a reference, we will use it.
+ *
+ *   peeled:
+ *
+ *      References under "refs/tags/", if they *can* be peeled, *are*
+ *      peeled in this file. References outside of "refs/tags/" are
+ *      probably not peeled even if they could have been, but if we find
+ *      a peeled value for such a reference we will use it.
+ *
+ *   fully-peeled:
+ *
+ *      All references in the file that can be peeled are peeled.
+ *      Inversely (and this is more important), any references in the
+ *      file for which no peeled value is recorded is not peelable. This
+ *      trait should typically be written alongside "peeled" for
+ *      compatibility with older clients, but we do not require it
+ *      (i.e., "peeled" is a no-op if "fully-peeled" is set).
+ */
 static void read_packed_refs(FILE *f, struct ref_dir *dir)
 {
 	struct ref_entry *last = NULL;
 	char refline[PATH_MAX];
-	int flag = REF_ISPACKED;
+	enum { PEELED_NONE, PEELED_TAGS, PEELED_FULLY } peeled = PEELED_NONE;
 
 	while (fgets(refline, sizeof(refline), f)) {
 		unsigned char sha1[20];
@@ -816,15 +843,20 @@ static void read_packed_refs(FILE *f, struct ref_dir *dir)
 
 		if (!strncmp(refline, header, sizeof(header)-1)) {
 			const char *traits = refline + sizeof(header) - 1;
-			if (strstr(traits, " peeled "))
-				flag |= REF_KNOWS_PEELED;
+			if (strstr(traits, " fully-peeled "))
+				peeled = PEELED_FULLY;
+			else if (strstr(traits, " peeled "))
+				peeled = PEELED_TAGS;
 			/* perhaps other traits later as well */
 			continue;
 		}
 
 		refname = parse_ref_line(refline, sha1);
 		if (refname) {
-			last = create_ref_entry(refname, sha1, flag, 1);
+			last = create_ref_entry(refname, sha1, REF_ISPACKED, 1);
+			if (peeled == PEELED_FULLY ||
+			    (peeled == PEELED_TAGS && !prefixcmp(refname, "refs/tags/")))
+				last->flag |= REF_KNOWS_PEELED;
 			add_ref(dir, last);
 			continue;
 		}
@@ -832,8 +864,15 @@ static void read_packed_refs(FILE *f, struct ref_dir *dir)
 		    refline[0] == '^' &&
 		    strlen(refline) == 42 &&
 		    refline[41] == '\n' &&
-		    !get_sha1_hex(refline + 1, sha1))
+		    !get_sha1_hex(refline + 1, sha1)) {
 			hashcpy(last->u.value.peeled, sha1);
+			/*
+			 * Regardless of what the file header said,
+			 * we definitely know the value of *this*
+			 * reference:
+			 */
+			last->flag |= REF_KNOWS_PEELED;
+		}
 	}
 }
 
@@ -2293,59 +2332,117 @@ int read_ref_at(const char *refname, unsigned long at_time, int cnt,
 	return 1;
 }
 
-int for_each_recent_reflog_ent(const char *refname, each_reflog_ent_fn fn, long ofs, void *cb_data)
+static int show_one_reflog_ent(struct strbuf *sb, each_reflog_ent_fn fn, void *cb_data)
 {
-	const char *logfile;
-	FILE *logfp;
-	struct strbuf sb = STRBUF_INIT;
-	int ret = 0;
+	unsigned char osha1[20], nsha1[20];
+	char *email_end, *message;
+	unsigned long timestamp;
+	int tz;
 
-	logfile = git_path("logs/%s", refname);
-	logfp = fopen(logfile, "r");
+	/* old SP new SP name <email> SP time TAB msg LF */
+	if (sb->len < 83 || sb->buf[sb->len - 1] != '\n' ||
+	    get_sha1_hex(sb->buf, osha1) || sb->buf[40] != ' ' ||
+	    get_sha1_hex(sb->buf + 41, nsha1) || sb->buf[81] != ' ' ||
+	    !(email_end = strchr(sb->buf + 82, '>')) ||
+	    email_end[1] != ' ' ||
+	    !(timestamp = strtoul(email_end + 2, &message, 10)) ||
+	    !message || message[0] != ' ' ||
+	    (message[1] != '+' && message[1] != '-') ||
+	    !isdigit(message[2]) || !isdigit(message[3]) ||
+	    !isdigit(message[4]) || !isdigit(message[5]))
+		return 0; /* corrupt? */
+	email_end[1] = '\0';
+	tz = strtol(message + 1, NULL, 10);
+	if (message[6] != '\t')
+		message += 6;
+	else
+		message += 7;
+	return fn(osha1, nsha1, sb->buf + 82, timestamp, tz, message, cb_data);
+}
+
+static char *find_beginning_of_line(char *bob, char *scan)
+{
+	while (bob < scan && *(--scan) != '\n')
+		; /* keep scanning backwards */
+	/*
+	 * Return either beginning of the buffer, or LF at the end of
+	 * the previous line.
+	 */
+	return scan;
+}
+
+int for_each_reflog_ent_reverse(const char *refname, each_reflog_ent_fn fn, void *cb_data)
+{
+	struct strbuf sb = STRBUF_INIT;
+	FILE *logfp;
+	long pos;
+	int ret = 0, at_tail = 1;
+
+	logfp = fopen(git_path("logs/%s", refname), "r");
 	if (!logfp)
 		return -1;
 
-	if (ofs) {
-		struct stat statbuf;
-		if (fstat(fileno(logfp), &statbuf) ||
-		    statbuf.st_size < ofs ||
-		    fseek(logfp, -ofs, SEEK_END) ||
-		    strbuf_getwholeline(&sb, logfp, '\n')) {
-			fclose(logfp);
-			strbuf_release(&sb);
-			return -1;
+	/* Jump to the end */
+	if (fseek(logfp, 0, SEEK_END) < 0)
+		return error("cannot seek back reflog for %s: %s",
+			     refname, strerror(errno));
+	pos = ftell(logfp);
+	while (!ret && 0 < pos) {
+		int cnt;
+		size_t nread;
+		char buf[BUFSIZ];
+		char *endp, *scanp;
+
+		/* Fill next block from the end */
+		cnt = (sizeof(buf) < pos) ? sizeof(buf) : pos;
+		if (fseek(logfp, pos - cnt, SEEK_SET))
+			return error("cannot seek back reflog for %s: %s",
+				     refname, strerror(errno));
+		nread = fread(buf, cnt, 1, logfp);
+		if (nread != 1)
+			return error("cannot read %d bytes from reflog for %s: %s",
+				     cnt, refname, strerror(errno));
+		pos -= cnt;
+
+		scanp = endp = buf + cnt;
+		if (at_tail && scanp[-1] == '\n')
+			/* Looking at the final LF at the end of the file */
+			scanp--;
+		at_tail = 0;
+
+		while (buf < scanp) {
+			/*
+			 * terminating LF of the previous line, or the beginning
+			 * of the buffer.
+			 */
+			char *bp;
+
+			bp = find_beginning_of_line(buf, scanp);
+
+			if (*bp != '\n') {
+				strbuf_splice(&sb, 0, 0, buf, endp - buf);
+				if (pos)
+					break; /* need to fill another block */
+				scanp = buf - 1; /* leave loop */
+			} else {
+				/*
+				 * (bp + 1) thru endp is the beginning of the
+				 * current line we have in sb
+				 */
+				strbuf_splice(&sb, 0, 0, bp + 1, endp - (bp + 1));
+				scanp = bp;
+				endp = bp + 1;
+			}
+			ret = show_one_reflog_ent(&sb, fn, cb_data);
+			strbuf_reset(&sb);
+			if (ret)
+				break;
 		}
-	}
 
-	while (!strbuf_getwholeline(&sb, logfp, '\n')) {
-		unsigned char osha1[20], nsha1[20];
-		char *email_end, *message;
-		unsigned long timestamp;
-		int tz;
-
-		/* old SP new SP name <email> SP time TAB msg LF */
-		if (sb.len < 83 || sb.buf[sb.len - 1] != '\n' ||
-		    get_sha1_hex(sb.buf, osha1) || sb.buf[40] != ' ' ||
-		    get_sha1_hex(sb.buf + 41, nsha1) || sb.buf[81] != ' ' ||
-		    !(email_end = strchr(sb.buf + 82, '>')) ||
-		    email_end[1] != ' ' ||
-		    !(timestamp = strtoul(email_end + 2, &message, 10)) ||
-		    !message || message[0] != ' ' ||
-		    (message[1] != '+' && message[1] != '-') ||
-		    !isdigit(message[2]) || !isdigit(message[3]) ||
-		    !isdigit(message[4]) || !isdigit(message[5]))
-			continue; /* corrupt? */
-		email_end[1] = '\0';
-		tz = strtol(message + 1, NULL, 10);
-		if (message[6] != '\t')
-			message += 6;
-		else
-			message += 7;
-		ret = fn(osha1, nsha1, sb.buf + 82, timestamp, tz, message,
-			 cb_data);
-		if (ret)
-			break;
 	}
+	if (!ret && sb.len)
+		ret = show_one_reflog_ent(&sb, fn, cb_data);
+
 	fclose(logfp);
 	strbuf_release(&sb);
 	return ret;
@@ -2353,9 +2450,20 @@ int for_each_recent_reflog_ent(const char *refname, each_reflog_ent_fn fn, long 
 
 int for_each_reflog_ent(const char *refname, each_reflog_ent_fn fn, void *cb_data)
 {
-	return for_each_recent_reflog_ent(refname, fn, 0, cb_data);
-}
+	FILE *logfp;
+	struct strbuf sb = STRBUF_INIT;
+	int ret = 0;
 
+	logfp = fopen(git_path("logs/%s", refname), "r");
+	if (!logfp)
+		return -1;
+
+	while (!ret && !strbuf_getwholeline(&sb, logfp, '\n'))
+		ret = show_one_reflog_ent(&sb, fn, cb_data);
+	fclose(logfp);
+	strbuf_release(&sb);
+	return ret;
+}
 /*
  * Call fn for each reflog in the namespace indicated by name.  name
  * must be empty or end with '/'.  Name will be used as a scratch
