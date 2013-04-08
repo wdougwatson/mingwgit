@@ -124,8 +124,13 @@ int safe_create_leading_directories(char *path)
 			}
 		}
 		else if (mkdir(path, 0777)) {
-			*pos = '/';
-			return -1;
+			if (errno == EEXIST &&
+			    !stat(path, &st) && S_ISDIR(st.st_mode)) {
+				; /* somebody created it since we checked */
+			} else {
+				*pos = '/';
+				return -1;
+			}
 		}
 		else if (adjust_shared_perm(path)) {
 			*pos = '/';
@@ -1266,6 +1271,10 @@ int check_sha1_signature(const unsigned char *sha1, void *map,
 		char buf[1024 * 16];
 		ssize_t readlen = read_istream(st, buf, sizeof(buf));
 
+		if (readlen < 0) {
+			close_istream(st);
+			return -1;
+		}
 		if (!readlen)
 			break;
 		git_SHA1_Update(&c, buf, readlen);

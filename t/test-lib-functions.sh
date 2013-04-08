@@ -91,6 +91,10 @@ q_to_tab () {
 	tr Q '\011'
 }
 
+qz_to_tab_space () {
+	tr QZ '\011\040'
+}
+
 append_cr () {
 	sed -e 's/$/Q/' | tr Q '\015'
 }
@@ -535,6 +539,9 @@ test_must_fail () {
 		return 1
 	elif test $exit_code = 127; then
 		echo >&2 "test_must_fail: command not found: $*"
+		return 1
+	elif test $exit_code = 126; then
+		echo >&2 "test_must_fail: valgrind error: $*"
 		return 1
 	fi
 	return 0

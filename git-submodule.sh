@@ -267,6 +267,11 @@ module_clone()
 	(clear_local_git_env; cd "$sm_path" && GIT_WORK_TREE=. git config core.worktree "$rel/$b")
 }
 
+isnumber()
+{
+	n=$(($1 + 0)) 2>/dev/null && test "$n" = "$1"
+}
+
 #
 # Add a new submodule to the working tree, .gitmodules and the index
 #
@@ -601,10 +606,12 @@ cmd_deinit()
 
 			if test -z "$force"
 			then
-				git rm -n "$sm_path" ||
+				git rm -qn "$sm_path" ||
 				die "$(eval_gettext "Submodule work tree '\$sm_path' contains local modifications; use '-f' to discard them")"
 			fi
-			rm -rf "$sm_path" || say "$(eval_gettext "Could not remove submodule work tree '\$sm_path'")"
+			rm -rf "$sm_path" &&
+			say "$(eval_gettext "Cleared directory '\$sm_path'")" ||
+			say "$(eval_gettext "Could not remove submodule work tree '\$sm_path'")"
 		fi
 
 		mkdir "$sm_path" || say "$(eval_gettext "Could not create empty submodule directory '\$sm_path'")"
@@ -889,13 +896,13 @@ cmd_summary() {
 			for_status="$1"
 			;;
 		-n|--summary-limit)
-			if summary_limit=$(($2 + 0)) 2>/dev/null && test "$summary_limit" = "$2"
-			then
-				:
-			else
-				usage
-			fi
+			summary_limit="$2"
+			isnumber "$summary_limit" || usage
 			shift
+			;;
+		--summary-limit=*)
+			summary_limit="${1#--summary-limit=}"
+			isnumber "$summary_limit" || usage
 			;;
 		--)
 			shift
