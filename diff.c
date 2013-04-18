@@ -1565,7 +1565,7 @@ static void show_stats(struct diffstat_t *data, struct diff_options *options)
 	 * Binary files are displayed with "Bin XXX -> YYY bytes"
 	 * instead of the change count and graph. This part is treated
 	 * similarly to the graph part, except that it is not
-	 * "scaled". If total width is too small to accomodate the
+	 * "scaled". If total width is too small to accommodate the
 	 * guaranteed minimum width of the filename part and the
 	 * separators and this message, this message will "overflow"
 	 * making the line longer than the maximum width.
@@ -2255,6 +2255,7 @@ static void builtin_diff(const char *name_a,
 		const char *del = diff_get_color_opt(o, DIFF_FILE_OLD);
 		const char *add = diff_get_color_opt(o, DIFF_FILE_NEW);
 		show_submodule_summary(o->file, one ? one->path : two->path,
+				line_prefix,
 				one->sha1, two->sha1, two->dirty_submodule,
 				meta, del, add, reset);
 		return;
@@ -3596,8 +3597,8 @@ int diff_opt_parse(struct diff_options *options, const char **av, int ac)
 		options->xdl_opts = DIFF_WITH_ALG(options, PATIENCE_DIFF);
 	else if (!strcmp(arg, "--histogram"))
 		options->xdl_opts = DIFF_WITH_ALG(options, HISTOGRAM_DIFF);
-	else if (!prefixcmp(arg, "--diff-algorithm=")) {
-		long value = parse_algorithm_value(arg+17);
+	else if ((argcount = parse_long_opt("diff-algorithm", av, &optarg))) {
+		long value = parse_algorithm_value(optarg);
 		if (value < 0)
 			return error("option diff-algorithm accepts \"myers\", "
 				     "\"minimal\", \"patience\" and \"histogram\"");
@@ -3605,6 +3606,7 @@ int diff_opt_parse(struct diff_options *options, const char **av, int ac)
 		DIFF_XDL_CLR(options, NEED_MINIMAL);
 		options->xdl_opts &= ~XDF_DIFF_ALGORITHM_MASK;
 		options->xdl_opts |= value;
+		return argcount;
 	}
 
 	/* flags options */

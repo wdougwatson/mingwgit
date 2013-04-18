@@ -169,24 +169,30 @@ test_expect_success 'fetch utf-8 filenames' '
   mkdir -p tmp && cd tmp &&
   test_when_finished "cd .. && rm -rf tmp && LC_ALL=C" &&
 
-  export LC_ALL=en_US.UTF-8
-
+  LC_ALL=en_US.UTF-8
+  export LC_ALL
   (
   bzr init bzrrepo &&
   cd bzrrepo &&
 
-  echo test >> "áéíóú" &&
-  bzr add "áéíóú" &&
-  bzr commit -m utf-8
+  echo test >> "ærø" &&
+  bzr add "ærø" &&
+  echo test >> "ø~?" &&
+  bzr add "ø~?" &&
+  bzr commit -m add-utf-8 &&
+  echo test >> "ærø" &&
+  bzr commit -m test-utf-8 &&
+  bzr rm "ø~?" &&
+  bzr mv "ærø" "ø~?" &&
+  bzr commit -m bzr-mv-utf-8
   ) &&
 
   (
   git clone "bzr::$PWD/bzrrepo" gitrepo &&
   cd gitrepo &&
-  git ls-files > ../actual
+  git -c core.quotepath=false ls-files > ../actual
   ) &&
-
-  echo "\"\\303\\241\\303\\251\\303\\255\\303\\263\\303\\272\"" > expected &&
+  echo "ø~?" > expected &&
   test_cmp expected actual
 '
 
@@ -194,7 +200,8 @@ test_expect_success 'push utf-8 filenames' '
   mkdir -p tmp && cd tmp &&
   test_when_finished "cd .. && rm -rf tmp && LC_ALL=C" &&
 
-  export LC_ALL=en_US.UTF-8
+  LC_ALL=en_US.UTF-8
+  export LC_ALL
 
   (
   bzr init bzrrepo &&
@@ -209,15 +216,15 @@ test_expect_success 'push utf-8 filenames' '
   git clone "bzr::$PWD/bzrrepo" gitrepo &&
   cd gitrepo &&
 
-  echo test >> "áéíóú" &&
-  git add "áéíóú" &&
+  echo test >> "ærø" &&
+  git add "ærø" &&
   git commit -m utf-8 &&
 
   git push
   ) &&
 
   (cd bzrrepo && bzr ls > ../actual) &&
-  echo -e "content\náéíóú" > expected &&
+  printf "content\nærø\n" > expected &&
   test_cmp expected actual
 '
 
