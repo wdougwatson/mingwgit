@@ -24,13 +24,60 @@ mechanism to make "git add -u" behave as if "git add -u .", it is
 important for those who are used to "git add -u" (without pathspec)
 updating the index only for paths in the current subdirectory to start
 training their fingers to explicitly say "git add -u ." when they mean
-it before Git 2.0 comes.
+it before Git 2.0 comes.  A warning is issued when these commands are
+run without a pathspec and when you have local changes outside the
+current directory, because the behaviour in Git 2.0 will be different
+from today's version in such a situation.
 
 
 Updates since v1.8.2
 --------------------
 
+Foreign interface
+
+ * remote-hg helper (in contrib/) has been updated.
+
+
 UI, Workflows & Features
+
+ * "git branch --vv" learned to paint the name of the branch it
+   integrates with in a different color (color.branch.upstream,
+   which defaults to blue).
+
+ * In a sparsely populated working tree, "git checkout <pathspec>" no
+   longer unmarks paths that match the given pathspec that were
+   originally ignored with "--sparse" (use --ignore-skip-worktree-bits
+   option to resurrect these paths out of the index if you really want
+   to).
+
+ * "git log --format" specifier learned %C(auto) token that tells Git
+   to use color when interpolating %d (decoration), %h (short commit
+   object name), etc. for terminal output.
+
+ * "git bisect" leaves the final outcome as a comment in its bisect
+   log file.
+
+ * "git clone --reference" can now refer to a gitfile "textual symlink"
+   that points at the real location of the repository.
+
+ * "git count-objects" learned "--human-readable" aka "-H" option to
+   show various large numbers in Ki/Mi/GiB scaled as necessary.
+
+ * "git cherry-pick $blob" and "git cherry-pick $tree" are nonsense,
+   and a more readable error message e.g. "can't cherry-pick a tree"
+   is given (we used to say "expected exactly one commit").
+
+ * The "--annotate" option to "git send-email" can be turned on (or
+   off) by default with sendemail.annotate configuration variable (you
+   can use --no-annotate from the command line to override it).
+
+ * The "--cover-letter" option to "git format-patch" can be turned on
+   (or off) by default with format.coverLetter configuration
+   variable. By setting it to 'auto', you can turn it on only for a
+   series with two or more patches.
+
+ * The bash completion support (in contrib/) learned that cherry-pick
+   takes a few more options than it already knew about.
 
  * "git help" learned "-g" option to show the list of guides just like
    list of commands are given with "-a".
@@ -119,6 +166,14 @@ Performance, Internal Implementation, etc.
 
  * Updates for building under msvc.
 
+ * A handful of issues in the code to traverse working tree to find
+   untracked and/or ignored files have been fixed, and the general
+   codepath involved in "status -u" and "clean" have been cleaned up
+   and optimized.
+
+ * The stack footprint of some codepaths that access an object from a
+   pack has been shrunk.
+
  * The logic to coalesce the same lines removed from the parents in
    the output from "diff -c/--cc" has been updated, but with an O(n^2)
    complexity, so this might turn out to be undesirable.
@@ -153,7 +208,7 @@ Performance, Internal Implementation, etc.
    conflicts have been applied.
 
 
-Also contains minor documentation updates and code clean-ups.
+Also contains various documentation updates and code clean-ups.
 
 
 Fixes since v1.8.2
@@ -162,6 +217,42 @@ Fixes since v1.8.2
 Unless otherwise noted, all the fixes since v1.8.2 in the maintenance
 track are contained in this release (see release notes to them for
 details).
+
+ * When receive-pack detects error in the pack header it received in
+   order to decide which of unpack-objects or index-pack to run, it
+   returned without closing the error stream, which led to a hang
+   sideband thread.
+   (merge 49ecfa1 jk/receive-pack-deadlocks-with-early-failure later to maint).
+
+ * Zsh completion forgot that '%' character used to signal untracked
+   files needs to be escaped with another '%'.
+   (merge 24b6132 fc/untracked-zsh-prompt later to maint).
+
+ * A commit object whose author or committer ident are malformed
+   crashed some code that trusted that a name, an email and an
+   timestamp can always be found in it.
+   (merge de5abe9 jk/chopped-ident later to maint).
+
+ * When "upload-pack" fails while generating a pack in response to
+   "git fetch" (or "git clone"), the receiving side mistakenly said
+   there was a programming error to trigger the die handler
+   recursively.
+   (merge 1ece66b jk/a-thread-only-dies-once later to maint).
+
+ * "rev-list --stdin" and friends kept bogus pointers into input
+   buffer around as human readble object names.  This was not a huge
+   problem but was exposed by a new change that uses these names in
+   error output.
+   (merge 70d26c6 tr/copy-revisions-from-stdin later to maint).
+
+ * Smart-capable HTTP servers were not restricted via the
+   GIT_NAMESPACE mechanism when talking with commit-walker clients,
+   like they do when talking with smart HTTP clients.
+   (merge 6130f86 jk/http-dumb-namespaces later to maint).
+
+ * "git merge-tree" did not omit a merge result that is identical to
+   "our" side in certain cases.
+   (merge aacecc3 jk/merge-tree-added-identically later to maint).
 
  * Perl scripts like "git-svn" closed (not redirecting to /dev/null)
    the standard error stream, which is not a very smart thing to do.

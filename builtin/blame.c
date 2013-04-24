@@ -1375,10 +1375,15 @@ static void get_ac_line(const char *inbuf, const char *what,
 	maillen = ident.mail_end - ident.mail_begin;
 	mailbuf = ident.mail_begin;
 
-	*time = strtoul(ident.date_begin, NULL, 10);
+	if (ident.date_begin && ident.date_end)
+		*time = strtoul(ident.date_begin, NULL, 10);
+	else
+		*time = 0;
 
-	len = ident.tz_end - ident.tz_begin;
-	strbuf_add(tz, ident.tz_begin, len);
+	if (ident.tz_begin && ident.tz_end)
+		strbuf_add(tz, ident.tz_begin, ident.tz_end - ident.tz_begin);
+	else
+		strbuf_addstr(tz, "(unknown)");
 
 	/*
 	 * Now, convert both name and e-mail using mailmap
@@ -1425,7 +1430,7 @@ static void get_commit_info(struct commit *commit,
 	commit_info_init(ret);
 
 	encoding = get_log_output_encoding();
-	message = logmsg_reencode(commit, encoding);
+	message = logmsg_reencode(commit, NULL, encoding);
 	get_ac_line(message, "\nauthor ",
 		    &ret->author, &ret->author_mail,
 		    &ret->author_time, &ret->author_tz);
