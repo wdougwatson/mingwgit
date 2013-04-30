@@ -26,12 +26,14 @@ bzrlib.plugin.load_plugins()
 import bzrlib.generate_ids
 import bzrlib.transport
 import bzrlib.errors
+import bzrlib.ui
 
 import sys
 import os
 import json
 import re
 import StringIO
+import atexit, shutil, hashlib, urlparse, subprocess
 
 NAME_RE = re.compile('^([^<>]+)')
 AUTHOR_RE = re.compile('^([^<>]+?)? ?<([^<>]*)>$')
@@ -94,7 +96,7 @@ class Marks:
         return self.last_mark
 
     def is_marked(self, rev):
-        return self.marks.has_key(rev)
+        return rev in self.marks
 
     def new_mark(self, rev, mark):
         self.marks[rev] = mark
@@ -224,7 +226,7 @@ def export_files(tree, files):
             else:
                 mode = '100644'
 
-            # is the blog already exported?
+            # is the blob already exported?
             if h in filenodes:
                 mark = filenodes[h]
                 final.append((mode, mark, path))
@@ -521,7 +523,7 @@ def c_style_unescape(string):
     return string
 
 def parse_commit(parser):
-    global marks, blob_marks, bmarks, parsed_refs
+    global marks, blob_marks, parsed_refs
     global mode
 
     parents = []
@@ -546,6 +548,10 @@ def parse_commit(parser):
     while parser.check('merge'):
         parents.append(parser.get_mark())
         parser.next()
+
+    # fast-export adds an extra newline
+    if data[-1] == '\n':
+        data = data[:-1]
 
     files = {}
 
@@ -633,16 +639,17 @@ def do_export(parser):
     for ref, revid in parsed_refs.iteritems():
         if ref == 'refs/heads/master':
             repo.generate_revision_history(revid, marks.get_tip('master'))
-            revno, revid = repo.last_revision_info()
             if peer:
-                if hasattr(peer, "import_last_revision_info_and_tags"):
-                    peer.import_last_revision_info_and_tags(repo, revno, revid)
-                else:
-                    peer.import_last_revision_info(repo.repository, revno, revid)
+                try:
+                    repo.push(peer, stop_revision=revid)
+                except bzrlib.errors.DivergedBranches:
+                    print "error %s non-fast forward" % ref
+                    continue
             else:
                 wt = repo.bzrdir.open_workingtree()
                 wt.update()
         print "ok %s" % ref
+
     print
 
 def do_capabilities(parser):
@@ -711,28 +718,49 @@ def get_repo(url, alias):
 
     return branch
 
+def fix_path(alias, orig_url):
+    url = urlparse.urlparse(orig_url, 'file')
+    if url.scheme != 'file' or os.path.isabs(url.path):
+        return
+    abs_url = urlparse.urljoin("%s/" % os.getcwd(), orig_url)
+    cmd = ['git', 'config', 'remote.%s.url' % alias, "bzr::%s" % abs_url]
+    subprocess.call(cmd)
+
 def main(args):
     global marks, prefix, dirname
     global tags, filenodes
     global blob_marks
     global parsed_refs
     global files_cache
+    global is_tmp
 
     alias = args[1]
     url = args[2]
 
-    prefix = 'refs/bzr/%s' % alias
     tags = {}
     filenodes = {}
     blob_marks = {}
     parsed_refs = {}
     files_cache = {}
+    marks = None
 
+    if alias[5:] == url:
+        is_tmp = True
+        alias = hashlib.sha1(alias).hexdigest()
+    else:
+        is_tmp = False
+
+    prefix = 'refs/bzr/%s' % alias
     gitdir = os.environ['GIT_DIR']
     dirname = os.path.join(gitdir, 'bzr', alias)
 
+    if not is_tmp:
+        fix_path(alias, url)
+
     if not os.path.exists(dirname):
         os.makedirs(dirname)
+
+    bzrlib.ui.ui_factory.be_quiet(True)
 
     repo = get_repo(url, alias)
 
@@ -753,6 +781,13 @@ def main(args):
             die('unhandled command: %s' % line)
         sys.stdout.flush()
 
-    marks.store()
+def bye():
+    if not marks:
+        return
+    if not is_tmp:
+        marks.store()
+    else:
+        shutil.rmtree(dirname)
 
+atexit.register(bye)
 sys.exit(main(sys.argv))
