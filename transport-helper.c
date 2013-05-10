@@ -214,9 +214,8 @@ static struct child_process *get_helper(struct transport *transport)
 		int i;
 		data->refspec_nr = refspec_nr;
 		data->refspecs = parse_fetch_refspec(refspec_nr, refspecs);
-		for (i = 0; i < refspec_nr; i++) {
+		for (i = 0; i < refspec_nr; i++)
 			free((char *)refspecs[i]);
-		}
 		free(refspecs);
 	}
 	strbuf_release(&buf);
@@ -806,6 +805,7 @@ static int push_refs_with_export(struct transport *transport,
 		if (private && !get_sha1(private, sha1)) {
 			strbuf_addf(&buf, "^%s", private);
 			string_list_append(&revlist_args, strbuf_detach(&buf, NULL));
+			hashcpy(ref->old_sha1, sha1);
 		}
 		free(private);
 

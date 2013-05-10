@@ -228,4 +228,114 @@ test_expect_success 'push utf-8 filenames' '
   test_cmp expected actual
 '
 
+test_expect_success 'pushing a merge' '
+  mkdir -p tmp && cd tmp &&
+  test_when_finished "cd .. && rm -rf tmp" &&
+
+  (
+  bzr init bzrrepo &&
+  cd bzrrepo &&
+  echo one > content &&
+  bzr add content &&
+  bzr commit -m one
+  ) &&
+
+  git clone "bzr::$PWD/bzrrepo" gitrepo &&
+
+  (
+  cd bzrrepo &&
+  echo two > content &&
+  bzr commit -m two
+  ) &&
+
+  (
+  cd gitrepo &&
+  echo three > content &&
+  git commit -a -m three &&
+  git fetch &&
+  git merge origin/master || true &&
+  echo three > content &&
+  git commit -a --no-edit &&
+  git push
+  ) &&
+
+  echo three > expected &&
+  cat bzrrepo/content > actual &&
+  test_cmp expected actual
+'
+
+cat > expected <<EOF
+origin/HEAD
+origin/branch
+origin/trunk
+EOF
+
+test_expect_success 'proper bzr repo' '
+  mkdir -p tmp && cd tmp &&
+  test_when_finished "cd .. && rm -rf tmp" &&
+
+  bzr init-repo bzrrepo &&
+
+  bzr init bzrrepo/trunk &&
+  (
+  cd bzrrepo/trunk &&
+  echo one >> content &&
+  bzr add content &&
+  bzr commit -m one
+  ) &&
+
+  bzr branch bzrrepo/trunk bzrrepo/branch &&
+  (
+  cd bzrrepo/branch &&
+  echo two >> content &&
+  bzr commit -m one
+  ) &&
+
+  git clone "bzr::$PWD/bzrrepo" gitrepo &&
+  (
+  cd gitrepo &&
+  git for-each-ref --format "%(refname:short)" refs/remotes/origin > ../actual
+  ) &&
+
+  test_cmp ../expected actual
+'
+
+test_expect_success 'strip' '
+  # Do not imitate this style; always chdir inside a subshell instead
+  mkdir -p tmp && cd tmp &&
+  test_when_finished "cd .. && rm -rf tmp" &&
+
+  (
+  bzr init bzrrepo &&
+  cd bzrrepo &&
+
+  echo one >> content &&
+  bzr add content &&
+  bzr commit -m one &&
+
+  echo two >> content &&
+  bzr commit -m two
+  ) &&
+
+  git clone "bzr::$PWD/bzrrepo" gitrepo &&
+
+  (
+  cd bzrrepo &&
+  bzr uncommit --force &&
+
+  echo three >> content &&
+  bzr commit -m three &&
+
+  echo four >> content &&
+  bzr commit -m four &&
+  bzr log --line | sed -e "s/^[0-9]\+: //" > ../expected
+  ) &&
+
+  (cd gitrepo &&
+  git fetch &&
+  git log --format="%an %ad %s" --date=short origin/master > ../actual) &&
+
+  test_cmp expected actual
+'
+
 test_done
