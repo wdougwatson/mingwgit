@@ -910,6 +910,7 @@ void show_date_relative(unsigned long time, int tz, const struct timeval *now,
 			struct strbuf *timebuf);
 int parse_date(const char *date, char *buf, int bufsize);
 int parse_date_basic(const char *date, unsigned long *timestamp, int *offset);
+int parse_expiry_date(const char *date, unsigned long *timestamp);
 void datestamp(char *buf, int bufsize);
 #define approxidate(s) approxidate_careful((s), NULL)
 unsigned long approxidate_careful(const char *, int *);
@@ -1024,9 +1025,21 @@ struct ref {
 	unsigned int
 		force:1,
 		forced_update:1,
-		merge:1,
 		deletion:1,
 		matched:1;
+
+	/*
+	 * Order is important here, as we write to FETCH_HEAD
+	 * in numeric order. And the default NOT_FOR_MERGE
+	 * should be 0, so that xcalloc'd structures get it
+	 * by default.
+	 */
+	enum {
+		FETCH_HEAD_MERGE = -1,
+		FETCH_HEAD_NOT_FOR_MERGE = 0,
+		FETCH_HEAD_IGNORE = 1
+	} fetch_head_status;
+
 	enum {
 		REF_STATUS_NONE = 0,
 		REF_STATUS_OK,
