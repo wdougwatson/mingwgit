@@ -85,13 +85,14 @@
 #define _NETBSD_SOURCE 1
 #define _SGI_SOURCE 1
 
-#ifdef WIN32 /* Both MinGW and MSVC */
+#if defined(WIN32) && !defined(__CYGWIN__) /* Both MinGW and MSVC */
 # if defined (_MSC_VER)
 #  define _WIN32_WINNT 0x0502
 # endif
 #define WIN32_LEAN_AND_MEAN  /* stops windows.h including winsock.h */
 #include <winsock2.h>
 #include <windows.h>
+#define GIT_WINDOWS_NATIVE
 #endif
 
 #include <unistd.h>
@@ -127,6 +128,9 @@
 #else
 #include <poll.h>
 #endif
+
+extern int get_st_mode_bits(const char *path, int *mode);
+
 #if defined(__MINGW32__)
 /* pull in Windows compatibility stuff */
 #include "compat/mingw.h"
@@ -163,7 +167,6 @@
 typedef long intptr_t;
 typedef unsigned long uintptr_t;
 #endif
-int get_st_mode_bits(const char *path, int *mode);
 #if defined(__CYGWIN__)
 #undef _XOPEN_SOURCE
 #include <grp.h>
