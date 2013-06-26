@@ -199,6 +199,9 @@ advice.*::
 	amWorkDir::
 		Advice that shows the location of the patch file when
 		linkgit:git-am[1] fails to apply it.
+	rmHints::
+		In case of failure in the output of linkgit:git-rm[1],
+		show directions on how to proceed from the current state.
 --
 
 core.fileMode::
@@ -919,11 +922,12 @@ color.ui::
 	as `color.diff` and `color.grep` that control the use of color
 	per command family. Its scope will expand as more commands learn
 	configuration to set a default for the `--color` option.  Set it
-	to `always` if you want all output not intended for machine
-	consumption to use color, to `true` or `auto` if you want such
-	output to use color when written to the terminal, or to `false` or
-	`never` if you prefer Git commands not to use color unless enabled
-	explicitly with some other configuration or the `--color` option.
+	to `false` or `never` if you prefer Git commands not to use
+	color unless enabled explicitly with some other configuration
+	or the `--color` option. Set it to `always` if you want all
+	output not intended for machine consumption to use color, to
+	`true` or `auto` (this is the default since Git 1.8.4) if you
+	want such output to use color when written to the terminal.
 
 column.ui::
 	Specify whether supported commands should output in columns.

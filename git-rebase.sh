@@ -84,6 +84,8 @@ keep_empty=
 test "$(git config --bool rebase.autosquash)" = "true" && autosquash=t
 
 read_basic_state () {
+	test -f "$state_dir/head-name" &&
+	test -f "$state_dir/onto" &&
 	head_name=$(cat "$state_dir"/head-name) &&
 	onto=$(cat "$state_dir"/onto) &&
 	# We always write to orig-head, but interactive rebase used to write to
@@ -434,7 +436,7 @@ then
 		shift
 		;;
 	esac
-	upstream=`git rev-parse --verify "${upstream_name}^0"` ||
+	upstream=$(peel_committish "${upstream_name}") ||
 	die "$(eval_gettext "invalid upstream \$upstream_name")"
 	upstream_arg="$upstream_name"
 else
@@ -470,7 +472,7 @@ case "$onto_name" in
 	fi
 	;;
 *)
-	onto=$(git rev-parse --verify "${onto_name}^0") ||
+	onto=$(peel_committish "$onto_name") ||
 	die "$(eval_gettext "Does not point to a valid commit: \$onto_name")"
 	;;
 esac
@@ -545,6 +547,7 @@ then
 		# Lazily switch to the target branch if needed...
 		test -z "$switch_to" || git checkout "$switch_to" --
 		say "$(eval_gettext "Current branch \$branch_name is up to date.")"
+		finish_rebase
 		exit 0
 	else
 		say "$(eval_gettext "Current branch \$branch_name is up to date, rebase forced.")"
@@ -577,6 +580,7 @@ if test "$mb" = "$orig_head"
 then
 	say "$(eval_gettext "Fast-forwarded \$branch_name to \$onto_name.")"
 	move_to_original_branch
+	finish_rebase
 	exit 0
 fi
 

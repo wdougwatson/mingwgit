@@ -477,19 +477,11 @@ test_expect_success 'interrupted squash works as expected (case 2)' '
 	test $one = $(git rev-parse HEAD~2)
 '
 
-test_expect_success 'ignore patch if in upstream' '
-	HEAD=$(git rev-parse HEAD) &&
-	git checkout -b has-cherry-picked HEAD^ &&
+test_expect_success '--continue tries to commit, even for "edit"' '
 	echo unrelated > file7 &&
 	git add file7 &&
 	test_tick &&
 	git commit -m "unrelated change" &&
-	git cherry-pick $HEAD &&
-	EXPECT_COUNT=1 git rebase -i $HEAD &&
-	test $HEAD = $(git rev-parse HEAD^)
-'
-
-test_expect_success '--continue tries to commit, even for "edit"' '
 	parent=$(git rev-parse HEAD^) &&
 	test_tick &&
 	FAKE_LINES="edit 1" git rebase -i HEAD^ &&
@@ -945,6 +937,17 @@ test_expect_success 'rebase -i respects core.commentchar' '
 	test_set_editor "$(pwd)/remove-all-but-first.sh" &&
 	git rebase -i B &&
 	test B = $(git cat-file commit HEAD^ | sed -ne \$p)
+'
+
+test_expect_success 'rebase -i, with <onto> and <upstream> specified as :/quuxery' '
+	test_when_finished "git branch -D torebase" &&
+	git checkout -b torebase branch1 &&
+	upstream=$(git rev-parse ":/J") &&
+	onto=$(git rev-parse ":/A") &&
+	git rebase --onto $onto $upstream &&
+	git reset --hard branch1 &&
+	git rebase --onto ":/A" ":/J" &&
+	git checkout branch1
 '
 
 test_done

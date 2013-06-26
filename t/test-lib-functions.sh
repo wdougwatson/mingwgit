@@ -609,6 +609,18 @@ test_cmp() {
 	$GIT_TEST_CMP "$@"
 }
 
+# Check if the file expected to be empty is indeed empty, and barfs
+# otherwise.
+
+test_must_be_empty () {
+	if test -s "$1"
+	then
+		echo "'$1' is not empty, it contains:"
+		cat "$1"
+		return 1
+	fi
+}
+
 # Tests that its two parameters refer to the same revision
 test_cmp_rev () {
 	git rev-parse --verify "$1" >expect.rev &&
@@ -678,4 +690,21 @@ test_create_repo () {
 		error "cannot run git init -- have you built things yet?"
 		mv .git/hooks .git/hooks-disabled
 	) || exit
+}
+
+# This function helps on symlink challenged file systems when it is not
+# important that the file system entry is a symbolic link.
+# Use test_ln_s_add instead of "ln -s x y && git add y" to add a
+# symbolic link entry y to the index.
+
+test_ln_s_add () {
+	if test_have_prereq SYMLINKS
+	then
+		ln -s "$1" "$2" &&
+		git update-index --add "$2"
+	else
+		printf '%s' "$1" >"$2" &&
+		ln_s_obj=$(git hash-object -w "$2") &&
+		git update-index --add --cacheinfo 120000 $ln_s_obj "$2"
+	fi
 }
