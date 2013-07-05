@@ -750,6 +750,21 @@ static int do_for_each_entry_in_dirs(struct ref_dir *dir1,
 }
 
 /*
+ * Load all of the refs from the dir into our in-memory cache. The hard work
+ * of loading loose refs is done by get_ref_dir(), so we just need to recurse
+ * through all of the sub-directories. We do not even need to care about
+ * sorting, as traversal order does not matter to us.
+ */
+static void prime_ref_dir(struct ref_dir *dir)
+{
+	int i;
+	for (i = 0; i < dir->nr; i++) {
+		struct ref_entry *entry = dir->entries[i];
+		if (entry->flag & REF_DIR)
+			prime_ref_dir(get_ref_dir(entry));
+	}
+}
+/*
  * Return true iff refname1 and refname2 conflict with each other.
  * Two reference names conflict if one of them exactly matches the
  * leading components of the other; e.g., "foo/bar" conflicts with
@@ -806,6 +821,30 @@ static int is_refname_available(const char *refname, const char *oldrefname,
 	return 1;
 }
 
+struct packed_ref_cache {
+	struct ref_entry *root;
+
+	/*
+	 * Count of references to the data structure in this instance,
+	 * including the pointer from ref_cache::packed if any.  The
+	 * data will not be freed as long as the reference count is
+	 * nonzero.
+	 */
+	unsigned int referrers;
+
+	/*
+	 * Iff the packed-refs file associated with this instance is
+	 * currently locked for writing, this points at the associated
+	 * lock (which is owned by somebody else).  The referrer count
+	 * is also incremented when the file is locked and decremented
+	 * when it is unlocked.
+	 */
+	struct lock_file *lock;
+
+	/* The metadata from when this packed-refs cache was read */
+	struct stat_validity validity;
+};
+
 /*
  * Future: need to be in "struct repository"
  * when doing a full libification.
@@ -813,7 +852,7 @@ static int is_refname_available(const char *refname, const char *oldrefname,
 static struct ref_cache {
 	struct ref_cache *next;
 	struct ref_entry *loose;
-	struct ref_entry *packed;
+	struct packed_ref_cache *packed;
 	/*
 	 * The submodule name, or "" for the main repo.  We allocate
 	 * length 1 rather than FLEX_ARRAY so that the main ref_cache
@@ -822,11 +861,42 @@ static struct ref_cache {
 	char name[1];
 } ref_cache, *submodule_ref_caches;
 
+/* Lock used for the main packed-refs file: */
+static struct lock_file packlock;
+
+/*
+ * Increment the reference count of *packed_refs.
+ */
+static void acquire_packed_ref_cache(struct packed_ref_cache *packed_refs)
+{
+	packed_refs->referrers++;
+}
+
+/*
+ * Decrease the reference count of *packed_refs.  If it goes to zero,
+ * free *packed_refs and return true; otherwise return false.
+ */
+static int release_packed_ref_cache(struct packed_ref_cache *packed_refs)
+{
+	if (!--packed_refs->referrers) {
+		free_ref_entry(packed_refs->root);
+		stat_validity_clear(&packed_refs->validity);
+		free(packed_refs);
+		return 1;
+	} else {
+		return 0;
+	}
+}
+
 static void clear_packed_ref_cache(struct ref_cache *refs)
 {
 	if (refs->packed) {
-		free_ref_entry(refs->packed);
+		struct packed_ref_cache *packed_refs = refs->packed;
+
+		if (packed_refs->lock)
+			die("internal error: packed-ref cache cleared while locked");
 		refs->packed = NULL;
+		release_packed_ref_cache(packed_refs);
 	}
 }
 
@@ -996,29 +1066,57 @@ static void read_packed_refs(FILE *f, struct ref_dir *dir)
 	}
 }
 
-static struct ref_dir *get_packed_refs(struct ref_cache *refs)
+/*
+ * Get the packed_ref_cache for the specified ref_cache, creating it
+ * if necessary.
+ */
+static struct packed_ref_cache *get_packed_ref_cache(struct ref_cache *refs)
 {
+	const char *packed_refs_file;
+
+	if (*refs->name)
+		packed_refs_file = git_path_submodule(refs->name, "packed-refs");
+	else
+		packed_refs_file = git_path("packed-refs");
+
+	if (refs->packed &&
+	    !stat_validity_check(&refs->packed->validity, packed_refs_file))
+		clear_packed_ref_cache(refs);
+
 	if (!refs->packed) {
-		const char *packed_refs_file;
 		FILE *f;
 
-		refs->packed = create_dir_entry(refs, "", 0, 0);
-		if (*refs->name)
-			packed_refs_file = git_path_submodule(refs->name, "packed-refs");
-		else
-			packed_refs_file = git_path("packed-refs");
+		refs->packed = xcalloc(1, sizeof(*refs->packed));
+		acquire_packed_ref_cache(refs->packed);
+		refs->packed->root = create_dir_entry(refs, "", 0, 0);
 		f = fopen(packed_refs_file, "r");
 		if (f) {
-			read_packed_refs(f, get_ref_dir(refs->packed));
+			stat_validity_update(&refs->packed->validity, fileno(f));
+			read_packed_refs(f, get_ref_dir(refs->packed->root));
 			fclose(f);
 		}
 	}
-	return get_ref_dir(refs->packed);
+	return refs->packed;
+}
+
+static struct ref_dir *get_packed_ref_dir(struct packed_ref_cache *packed_ref_cache)
+{
+	return get_ref_dir(packed_ref_cache->root);
+}
+
+static struct ref_dir *get_packed_refs(struct ref_cache *refs)
+{
+	return get_packed_ref_dir(get_packed_ref_cache(refs));
 }
 
 void add_packed_ref(const char *refname, const unsigned char *sha1)
 {
-	add_ref(get_packed_refs(&ref_cache),
+	struct packed_ref_cache *packed_ref_cache =
+		get_packed_ref_cache(&ref_cache);
+
+	if (!packed_ref_cache->lock)
+		die("internal error: packed refs not locked");
+	add_ref(get_packed_ref_dir(packed_ref_cache),
 		create_ref_entry(refname, sha1, REF_ISPACKED, 1));
 }
 
@@ -1197,6 +1295,37 @@ static struct ref_entry *get_packed_ref(const char *refname)
 	return find_ref(get_packed_refs(&ref_cache), refname);
 }
 
+/*
+ * A loose ref file doesn't exist; check for a packed ref.  The
+ * options are forwarded from resolve_safe_unsafe().
+ */
+static const char *handle_missing_loose_ref(const char *refname,
+					    unsigned char *sha1,
+					    int reading,
+					    int *flag)
+{
+	struct ref_entry *entry;
+
+	/*
+	 * The loose reference file does not exist; check for a packed
+	 * reference.
+	 */
+	entry = get_packed_ref(refname);
+	if (entry) {
+		hashcpy(sha1, entry->u.value.sha1);
+		if (flag)
+			*flag |= REF_ISPACKED;
+		return refname;
+	}
+	/* The reference is not a packed reference, either. */
+	if (reading) {
+		return NULL;
+	} else {
+		hashclr(sha1);
+		return refname;
+	}
+}
+
 const char *resolve_ref_unsafe(const char *refname, unsigned char *sha1, int reading, int *flag)
 {
 	int depth = MAXDEPTH;
@@ -1221,36 +1350,34 @@ const char *resolve_ref_unsafe(const char *refname, unsigned char *sha1, int rea
 
 		git_snpath(path, sizeof(path), "%s", refname);
 
+		/*
+		 * We might have to loop back here to avoid a race
+		 * condition: first we lstat() the file, then we try
+		 * to read it as a link or as a file.  But if somebody
+		 * changes the type of the file (file <-> directory
+		 * <-> symlink) between the lstat() and reading, then
+		 * we don't want to report that as an error but rather
+		 * try again starting with the lstat().
+		 */
+	stat_ref:
 		if (lstat(path, &st) < 0) {
-			struct ref_entry *entry;
-
-			if (errno != ENOENT)
+			if (errno == ENOENT)
+				return handle_missing_loose_ref(refname, sha1,
+								reading, flag);
+			else
 				return NULL;
-			/*
-			 * The loose reference file does not exist;
-			 * check for a packed reference.
-			 */
-			entry = get_packed_ref(refname);
-			if (entry) {
-				hashcpy(sha1, entry->u.value.sha1);
-				if (flag)
-					*flag |= REF_ISPACKED;
-				return refname;
-			}
-			/* The reference is not a packed reference, either. */
-			if (reading) {
-				return NULL;
-			} else {
-				hashclr(sha1);
-				return refname;
-			}
 		}
 
 		/* Follow "normalized" - ie "refs/.." symlinks by hand */
 		if (S_ISLNK(st.st_mode)) {
 			len = readlink(path, buffer, sizeof(buffer)-1);
-			if (len < 0)
-				return NULL;
+			if (len < 0) {
+				if (errno == ENOENT || errno == EINVAL)
+					/* inconsistent with lstat; retry */
+					goto stat_ref;
+				else
+					return NULL;
+			}
 			buffer[len] = 0;
 			if (!prefixcmp(buffer, "refs/") &&
 					!check_refname_format(buffer, 0)) {
@@ -1273,8 +1400,13 @@ const char *resolve_ref_unsafe(const char *refname, unsigned char *sha1, int rea
 		 * a ref
 		 */
 		fd = open(path, O_RDONLY);
-		if (fd < 0)
-			return NULL;
+		if (fd < 0) {
+			if (errno == ENOENT)
+				/* inconsistent with lstat; retry */
+				goto stat_ref;
+			else
+				return NULL;
+		}
 		len = read_in_full(fd, buffer, sizeof(buffer)-1);
 		close(fd);
 		if (len < 0)
@@ -1286,8 +1418,19 @@ const char *resolve_ref_unsafe(const char *refname, unsigned char *sha1, int rea
 		/*
 		 * Is it a symbolic ref?
 		 */
-		if (prefixcmp(buffer, "ref:"))
-			break;
+		if (prefixcmp(buffer, "ref:")) {
+			/*
+			 * Please note that FETCH_HEAD has a second
+			 * line containing other data.
+			 */
+			if (get_sha1_hex(buffer, sha1) ||
+			    (buffer[40] != '\0' && !isspace(buffer[40]))) {
+				if (flag)
+					*flag |= REF_ISBROKEN;
+				return NULL;
+			}
+			return refname;
+		}
 		if (flag)
 			*flag |= REF_ISSYMREF;
 		buf = buffer + 4;
@@ -1300,13 +1443,6 @@ const char *resolve_ref_unsafe(const char *refname, unsigned char *sha1, int rea
 		}
 		refname = strcpy(refname_buffer, buf);
 	}
-	/* Please note that FETCH_HEAD has a second line containing other data. */
-	if (get_sha1_hex(buffer, sha1) || (buffer[40] != '\0' && !isspace(buffer[40]))) {
-		if (flag)
-			*flag |= REF_ISBROKEN;
-		return NULL;
-	}
-	return refname;
 }
 
 char *resolve_refdup(const char *ref, unsigned char *sha1, int reading, int *flag)
@@ -1520,13 +1656,31 @@ void warn_dangling_symref(FILE *fp, const char *msg_fmt, const char *refname)
 static int do_for_each_entry(struct ref_cache *refs, const char *base,
 			     each_ref_entry_fn fn, void *cb_data)
 {
-	struct ref_dir *packed_dir = get_packed_refs(refs);
-	struct ref_dir *loose_dir = get_loose_refs(refs);
+	struct packed_ref_cache *packed_ref_cache;
+	struct ref_dir *loose_dir;
+	struct ref_dir *packed_dir;
 	int retval = 0;
 
+	/*
+	 * We must make sure that all loose refs are read before accessing the
+	 * packed-refs file; this avoids a race condition in which loose refs
+	 * are migrated to the packed-refs file by a simultaneous process, but
+	 * our in-memory view is from before the migration. get_packed_ref_cache()
+	 * takes care of making sure our view is up to date with what is on
+	 * disk.
+	 */
+	loose_dir = get_loose_refs(refs);
+	if (base && *base) {
+		loose_dir = find_containing_dir(loose_dir, base, 0);
+	}
+	if (loose_dir)
+		prime_ref_dir(loose_dir);
+
+	packed_ref_cache = get_packed_ref_cache(refs);
+	acquire_packed_ref_cache(packed_ref_cache);
+	packed_dir = get_packed_ref_dir(packed_ref_cache);
 	if (base && *base) {
 		packed_dir = find_containing_dir(packed_dir, base, 0);
-		loose_dir = find_containing_dir(loose_dir, base, 0);
 	}
 
 	if (packed_dir && loose_dir) {
@@ -1544,6 +1698,7 @@ static int do_for_each_entry(struct ref_cache *refs, const char *base,
 				loose_dir, 0, fn, cb_data);
 	}
 
+	release_packed_ref_cache(packed_ref_cache);
 	return retval;
 }
 
@@ -1998,6 +2153,73 @@ static void write_packed_entry(int fd, char *refname, unsigned char *sha1,
 	}
 }
 
+/*
+ * An each_ref_entry_fn that writes the entry to a packed-refs file.
+ */
+static int write_packed_entry_fn(struct ref_entry *entry, void *cb_data)
+{
+	int *fd = cb_data;
+	enum peel_status peel_status = peel_entry(entry, 0);
+
+	if (peel_status != PEEL_PEELED && peel_status != PEEL_NON_TAG)
+		error("internal error: %s is not a valid packed reference!",
+		      entry->name);
+	write_packed_entry(*fd, entry->name, entry->u.value.sha1,
+			   peel_status == PEEL_PEELED ?
+			   entry->u.value.peeled : NULL);
+	return 0;
+}
+
+int lock_packed_refs(int flags)
+{
+	struct packed_ref_cache *packed_ref_cache;
+
+	/* Discard the old cache because it might be invalid: */
+	clear_packed_ref_cache(&ref_cache);
+	if (hold_lock_file_for_update(&packlock, git_path("packed-refs"), flags) < 0)
+		return -1;
+	/* Read the current packed-refs while holding the lock: */
+	packed_ref_cache = get_packed_ref_cache(&ref_cache);
+	packed_ref_cache->lock = &packlock;
+	/* Increment the reference count to prevent it from being freed: */
+	acquire_packed_ref_cache(packed_ref_cache);
+	return 0;
+}
+
+int commit_packed_refs(void)
+{
+	struct packed_ref_cache *packed_ref_cache =
+		get_packed_ref_cache(&ref_cache);
+	int error = 0;
+
+	if (!packed_ref_cache->lock)
+		die("internal error: packed-refs not locked");
+	write_or_die(packed_ref_cache->lock->fd,
+		     PACKED_REFS_HEADER, strlen(PACKED_REFS_HEADER));
+
+	do_for_each_entry_in_dir(get_packed_ref_dir(packed_ref_cache),
+				 0, write_packed_entry_fn,
+				 &packed_ref_cache->lock->fd);
+	if (commit_lock_file(packed_ref_cache->lock))
+		error = -1;
+	packed_ref_cache->lock = NULL;
+	release_packed_ref_cache(packed_ref_cache);
+	return error;
+}
+
+void rollback_packed_refs(void)
+{
+	struct packed_ref_cache *packed_ref_cache =
+		get_packed_ref_cache(&ref_cache);
+
+	if (!packed_ref_cache->lock)
+		die("internal error: packed-refs not locked");
+	rollback_lock_file(packed_ref_cache->lock);
+	packed_ref_cache->lock = NULL;
+	release_packed_ref_cache(packed_ref_cache);
+	clear_packed_ref_cache(&ref_cache);
+}
+
 struct ref_to_prune {
 	struct ref_to_prune *next;
 	unsigned char sha1[20];
@@ -2006,35 +2228,50 @@ struct ref_to_prune {
 
 struct pack_refs_cb_data {
 	unsigned int flags;
+	struct ref_dir *packed_refs;
 	struct ref_to_prune *ref_to_prune;
-	int fd;
 };
 
-static int pack_one_ref(struct ref_entry *entry, void *cb_data)
+/*
+ * An each_ref_entry_fn that is run over loose references only.  If
+ * the loose reference can be packed, add an entry in the packed ref
+ * cache.  If the reference should be pruned, also add it to
+ * ref_to_prune in the pack_refs_cb_data.
+ */
+static int pack_if_possible_fn(struct ref_entry *entry, void *cb_data)
 {
 	struct pack_refs_cb_data *cb = cb_data;
 	enum peel_status peel_status;
+	struct ref_entry *packed_entry;
 	int is_tag_ref = !prefixcmp(entry->name, "refs/tags/");
 
-	/* ALWAYS pack refs that were already packed or are tags */
-	if (!(cb->flags & PACK_REFS_ALL) && !is_tag_ref &&
-	    !(entry->flag & REF_ISPACKED))
+	/* ALWAYS pack tags */
+	if (!(cb->flags & PACK_REFS_ALL) && !is_tag_ref)
 		return 0;
 
 	/* Do not pack symbolic or broken refs: */
 	if ((entry->flag & REF_ISSYMREF) || !ref_resolves_to_object(entry))
 		return 0;
 
+	/* Add a packed ref cache entry equivalent to the loose entry. */
 	peel_status = peel_entry(entry, 1);
 	if (peel_status != PEEL_PEELED && peel_status != PEEL_NON_TAG)
 		die("internal error peeling reference %s (%s)",
 		    entry->name, sha1_to_hex(entry->u.value.sha1));
-	write_packed_entry(cb->fd, entry->name, entry->u.value.sha1,
-			   peel_status == PEEL_PEELED ?
-			   entry->u.value.peeled : NULL);
+	packed_entry = find_ref(cb->packed_refs, entry->name);
+	if (packed_entry) {
+		/* Overwrite existing packed entry with info from loose entry */
+		packed_entry->flag = REF_ISPACKED | REF_KNOWS_PEELED;
+		hashcpy(packed_entry->u.value.sha1, entry->u.value.sha1);
+	} else {
+		packed_entry = create_ref_entry(entry->name, entry->u.value.sha1,
+						REF_ISPACKED | REF_KNOWS_PEELED, 0);
+		add_ref(cb->packed_refs, packed_entry);
+	}
+	hashcpy(packed_entry->u.value.peeled, entry->u.value.peeled);
 
-	/* If the ref was already packed, there is no need to prune it. */
-	if ((cb->flags & PACK_REFS_PRUNE) && !(entry->flag & REF_ISPACKED)) {
+	/* Schedule the loose reference for pruning if requested. */
+	if ((cb->flags & PACK_REFS_PRUNE)) {
 		int namelen = strlen(entry->name) + 1;
 		struct ref_to_prune *n = xcalloc(1, sizeof(*n) + namelen);
 		hashcpy(n->sha1, entry->u.value.sha1);
@@ -2096,8 +2333,6 @@ static void prune_refs(struct ref_to_prune *r)
 	}
 }
 
-static struct lock_file packlock;
-
 int pack_refs(unsigned int flags)
 {
 	struct pack_refs_cb_data cbdata;
@@ -2105,26 +2340,38 @@ int pack_refs(unsigned int flags)
 	memset(&cbdata, 0, sizeof(cbdata));
 	cbdata.flags = flags;
 
-	cbdata.fd = hold_lock_file_for_update(&packlock, git_path("packed-refs"),
-					      LOCK_DIE_ON_ERROR);
+	lock_packed_refs(LOCK_DIE_ON_ERROR);
+	cbdata.packed_refs = get_packed_refs(&ref_cache);
 
-	write_or_die(cbdata.fd, PACKED_REFS_HEADER, strlen(PACKED_REFS_HEADER));
+	do_for_each_entry_in_dir(get_loose_refs(&ref_cache), 0,
+				 pack_if_possible_fn, &cbdata);
 
-	do_for_each_entry(&ref_cache, "", pack_one_ref, &cbdata);
-	if (commit_lock_file(&packlock) < 0)
+	if (commit_packed_refs())
 		die_errno("unable to overwrite old ref-pack file");
+
 	prune_refs(cbdata.ref_to_prune);
 	return 0;
 }
 
-static int repack_ref_fn(struct ref_entry *entry, void *cb_data)
+/*
+ * If entry is no longer needed in packed-refs, add it to the string
+ * list pointed to by cb_data.  Reasons for deleting entries:
+ *
+ * - Entry is broken.
+ * - Entry is overridden by a loose ref.
+ * - Entry does not point at a valid object.
+ *
+ * In the first and third cases, also emit an error message because these
+ * are indications of repository corruption.
+ */
+static int curate_packed_ref_fn(struct ref_entry *entry, void *cb_data)
 {
-	int *fd = cb_data;
-	enum peel_status peel_status;
+	struct string_list *refs_to_delete = cb_data;
 
 	if (entry->flag & REF_ISBROKEN) {
 		/* This shouldn't happen to packed refs. */
 		error("%s is broken!", entry->name);
+		string_list_append(refs_to_delete, entry->name);
 		return 0;
 	}
 	if (!has_sha1_file(entry->u.value.sha1)) {
@@ -2134,7 +2381,7 @@ static int repack_ref_fn(struct ref_entry *entry, void *cb_data)
 		if (read_ref_full(entry->name, sha1, 0, &flags))
 			/* We should at least have found the packed ref. */
 			die("Internal error");
-		if ((flags & REF_ISSYMREF) || !(flags & REF_ISPACKED))
+		if ((flags & REF_ISSYMREF) || !(flags & REF_ISPACKED)) {
 			/*
 			 * This packed reference is overridden by a
 			 * loose reference, so it is OK that its value
@@ -2143,9 +2390,11 @@ static int repack_ref_fn(struct ref_entry *entry, void *cb_data)
 			 * collected.  For this purpose we don't even
 			 * care whether the loose reference itself is
 			 * invalid, broken, symbolic, etc.  Silently
-			 * omit the packed reference from the output.
+			 * remove the packed reference.
 			 */
+			string_list_append(refs_to_delete, entry->name);
 			return 0;
+		}
 		/*
 		 * There is no overriding loose reference, so the fact
 		 * that this reference doesn't refer to a valid object
@@ -2154,44 +2403,47 @@ static int repack_ref_fn(struct ref_entry *entry, void *cb_data)
 		 * the output.
 		 */
 		error("%s does not point to a valid object!", entry->name);
+		string_list_append(refs_to_delete, entry->name);
 		return 0;
 	}
-
-	peel_status = peel_entry(entry, 0);
-	write_packed_entry(*fd, entry->name, entry->u.value.sha1,
-			   peel_status == PEEL_PEELED ?
-			   entry->u.value.peeled : NULL);
 
 	return 0;
 }
 
 static int repack_without_ref(const char *refname)
 {
-	int fd;
 	struct ref_dir *packed;
+	struct string_list refs_to_delete = STRING_LIST_INIT_DUP;
+	struct string_list_item *ref_to_delete;
 
 	if (!get_packed_ref(refname))
 		return 0; /* refname does not exist in packed refs */
 
-	fd = hold_lock_file_for_update(&packlock, git_path("packed-refs"), 0);
-	if (fd < 0) {
+	if (lock_packed_refs(0)) {
 		unable_to_lock_error(git_path("packed-refs"), errno);
 		return error("cannot delete '%s' from packed refs", refname);
 	}
-	clear_packed_ref_cache(&ref_cache);
 	packed = get_packed_refs(&ref_cache);
-	/* Remove refname from the cache. */
+
+	/* Remove refname from the cache: */
 	if (remove_entry(packed, refname) == -1) {
 		/*
 		 * The packed entry disappeared while we were
 		 * acquiring the lock.
 		 */
-		rollback_lock_file(&packlock);
+		rollback_packed_refs();
 		return 0;
 	}
-	write_or_die(fd, PACKED_REFS_HEADER, strlen(PACKED_REFS_HEADER));
-	do_for_each_entry_in_dir(packed, 0, repack_ref_fn, &fd);
-	return commit_lock_file(&packlock);
+
+	/* Remove any other accumulated cruft: */
+	do_for_each_entry_in_dir(packed, 0, curate_packed_ref_fn, &refs_to_delete);
+	for_each_string_list_item(ref_to_delete, &refs_to_delete) {
+		if (remove_entry(packed, ref_to_delete->string) == -1)
+			die("internal error");
+	}
+
+	/* Write what remains: */
+	return commit_packed_refs();
 }
 
 int delete_ref(const char *refname, const unsigned char *sha1, int delopt)
