@@ -545,17 +545,20 @@ static void update_remote_refs(const struct ref *refs,
 			       const struct ref *remote_head_points_at,
 			       const char *branch_top,
 			       const char *msg,
-			       struct transport *transport)
+			       struct transport *transport,
+			       int check_connectivity)
 {
 	const struct ref *rm = mapped_refs;
 
-	if (0 <= option_verbosity)
-		printf(_("Checking connectivity... "));
-	if (check_everything_connected_with_transport(iterate_ref_map,
-						      0, &rm, transport))
-		die(_("remote did not send all necessary objects"));
-	if (0 <= option_verbosity)
-		printf(_("done\n"));
+	if (check_connectivity) {
+		if (0 <= option_verbosity)
+			printf(_("Checking connectivity... "));
+		if (check_everything_connected_with_transport(iterate_ref_map,
+							      0, &rm, transport))
+			die(_("remote did not send all necessary objects"));
+		if (0 <= option_verbosity)
+			printf(_("done\n"));
+	}
 
 	if (refs) {
 		write_remote_refs(mapped_refs);
@@ -701,7 +704,7 @@ static void write_refspec_config(const char* src_ref_prefix,
 			/*
 			 * otherwise, the next "git fetch" will
 			 * simply fetch from HEAD without updating
-			 * any remote tracking branch, which is what
+			 * any remote-tracking branch, which is what
 			 * we want.
 			 */
 		} else {
@@ -963,7 +966,7 @@ int cmd_clone(int argc, const char **argv, const char *prefix)
 		transport_fetch_refs(transport, mapped_refs);
 
 	update_remote_refs(refs, mapped_refs, remote_head_points_at,
-			   branch_top.buf, reflog_msg.buf, transport);
+			   branch_top.buf, reflog_msg.buf, transport, !is_local);
 
 	update_head(our_head_points_at, remote_head, reflog_msg.buf);
 
