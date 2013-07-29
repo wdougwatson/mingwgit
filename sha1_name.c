@@ -52,7 +52,7 @@ static void update_candidates(struct disambiguate_state *ds, const unsigned char
 	}
 
 	if (!ds->candidate_ok) {
-		/* discard the candidate; we know it does not satisify fn */
+		/* discard the candidate; we know it does not satisfy fn */
 		hashcpy(ds->candidate, current);
 		ds->candidate_checked = 0;
 		return;
@@ -452,13 +452,15 @@ static int get_sha1_basic(const char *str, int len, unsigned char *sha1)
 	int at, reflog_len, nth_prior = 0;
 
 	if (len == 40 && !get_sha1_hex(str, sha1)) {
-		refs_found = dwim_ref(str, len, tmp_sha1, &real_ref);
-		if (refs_found > 0 && warn_ambiguous_refs) {
-			warning(warn_msg, len, str);
-			if (advice_object_name_warning)
-				fprintf(stderr, "%s\n", _(object_name_msg));
+		if (warn_on_object_refname_ambiguity) {
+			refs_found = dwim_ref(str, len, tmp_sha1, &real_ref);
+			if (refs_found > 0 && warn_ambiguous_refs) {
+				warning(warn_msg, len, str);
+				if (advice_object_name_warning)
+					fprintf(stderr, "%s\n", _(object_name_msg));
+			}
+			free(real_ref);
 		}
-		free(real_ref);
 		return 0;
 	}
 

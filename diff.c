@@ -1683,9 +1683,7 @@ static void show_stats(struct diffstat_t *data, struct diff_options *options)
 		del = deleted;
 
 		if (graph_width <= max_change) {
-			int total = add + del;
-
-			total = scale_linear(add + del, graph_width, max_change);
+			int total = scale_linear(add + del, graph_width, max_change);
 			if (total < 2 && add && del)
 				/* width >= 2 due to the sanity check */
 				total = 2;
@@ -4466,7 +4464,7 @@ void diff_flush(struct diff_options *options)
 	    DIFF_OPT_TST(options, DIFF_FROM_CONTENTS)) {
 		/*
 		 * run diff_flush_patch for the exit status. setting
-		 * options->file to /dev/null should be safe, becaue we
+		 * options->file to /dev/null should be safe, because we
 		 * aren't supposed to produce any output anyway.
 		 */
 		if (options->close_file)
