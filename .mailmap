@@ -14,6 +14,7 @@ Alex Riesen <raa.lkml@gmail.com> <raa@steel.home>
 Alex Vandiver <alex@chmrr.net> <alexmv@MIT.EDU>
 Alexander Gavrilov <angavrilov@gmail.com>
 Alexey Shumkin <alex.crezoff@gmail.com> <zapped@mail.ru>
+Alexey Shumkin <alex.crezoff@gmail.com> <Alex.Crezoff@gmail.com>
 Anders Kaseorg <andersk@MIT.EDU> <andersk@ksplice.com>
 Anders Kaseorg <andersk@MIT.EDU> <andersk@mit.edu>
 Aneesh Kumar K.V <aneesh.kumar@gmail.com>
@@ -26,9 +27,12 @@ Bryan Larsen <bryan@larsen.st> <bryanlarsen@yahoo.com>
 Cheng Renquan <crquan@gmail.com>
 Chris Shoemaker <c.shoemaker@cox.net>
 Chris Wright <chrisw@sous-sol.org> <chrisw@osdl.org>
+Cord Seele <cowose@gmail.com> <cowose@googlemail.com>
+Christian Stimming <stimming@tuhh.de> <chs@ckiste.goetheallee>
 Csaba Henk <csaba@gluster.com> <csaba@lowlife.hu>
 Dan Johnson <computerdruid@gmail.com>
 Dana L. How <danahow@gmail.com> <how@deathvalley.cswitch.com>
+Dana L. How <danahow@gmail.com> Dana How
 Daniel Barkalow <barkalow@iabervon.org>
 David Brown <git@davidb.org> <davidb@quicinc.com>
 David D. Kilzer <ddkilzer@kilzer.net>
@@ -63,6 +67,7 @@ J. Bruce Fields <bfields@citi.umich.edu> <bfields@fieldses.org>
 J. Bruce Fields <bfields@citi.umich.edu> <bfields@pig.linuxdev.us.dell.com>
 J. Bruce Fields <bfields@citi.umich.edu> <bfields@puzzle.fieldses.org>
 Jakub Narębski <jnareb@gmail.com>
+James Y Knight <jknight@itasoftware.com> <foom@fuhm.net>
 Jason Riedy <ejr@eecs.berkeley.edu> <ejr@EECS.Berkeley.EDU>
 Jason Riedy <ejr@eecs.berkeley.edu> <ejr@cs.berkeley.edu>
 Jay Soffian <jaysoffian@gmail.com> <jaysoffian+git@gmail.com>
@@ -74,6 +79,7 @@ Johannes Schindelin <Johannes.Schindelin@gmx.de> <johannes.schindelin@gmx.de>
 Johannes Sixt <j6t@kdbg.org> <J.Sixt@eudaptics.com>
 Johannes Sixt <j6t@kdbg.org> <j.sixt@viscovery.net>
 Johannes Sixt <j6t@kdbg.org> <johannes.sixt@telecom.at>
+John 'Warthog9' Hawley <warthog9@kernel.org> <warthog9@eaglescrag.net>
 Jon Loeliger <jdl@jdl.com> <jdl@freescale.com>
 Jon Loeliger <jdl@jdl.com> <jdl@freescale.org>
 Jon Seymour <jon.seymour@gmail.com> <jon@blackcubes.dyndns.org>
@@ -89,8 +95,8 @@ Junio C Hamano <gitster@pobox.com> <junio@pobox.com>
 Junio C Hamano <gitster@pobox.com> <junio@twinsun.com>
 Junio C Hamano <gitster@pobox.com> <junkio@cox.net>
 Junio C Hamano <gitster@pobox.com> <junkio@twinsun.com>
-Karl Wiberg <kha@treskal.com> Karl Hasselström <kha@treskal.com>
-Karl Wiberg <kha@treskal.com> Karl Hasselström <kha@yoghurt.hemma.treskal.com>
+Karl Wiberg <kha@treskal.com> Karl  Hasselström
+Karl Wiberg <kha@treskal.com> <kha@yoghurt.hemma.treskal.com>
 Karsten Blees <blees@dcon.de> <karsten.blees@dcon.de>
 Karsten Blees <blees@dcon.de> <karsten.blees@gmail.com>
 Kay Sievers <kay.sievers@vrfy.org> <kay.sievers@suse.de>
@@ -127,6 +133,9 @@ Matthias Urlichs <matthias@urlichs.de> <smurf@kiste.(none)>
 Matthias Urlichs <matthias@urlichs.de> <smurf@smurf.noris.de>
 Michael Coleman <tutufan@gmail.com>
 Michael J Gruber <git@drmicha.warpmail.net> <michaeljgruber+gmane@fastmail.fm>
+Michael S. Tsirkin <mst@kernel.org> <mst@redhat.com>
+Michael S. Tsirkin <mst@kernel.org> <mst@mellanox.co.il>
+Michael S. Tsirkin <mst@kernel.org> <mst@dev.mellanox.co.il>
 Michael W. Olson <mwolson@gnu.org>
 Michael Witten <mfwitten@gmail.com> <mfwitten@MIT.EDU>
 Michael Witten <mfwitten@gmail.com> <mfwitten@mit.edu>
@@ -171,6 +180,7 @@ Robin Rosenberg <robin.rosenberg@dewire.com> <robin.rosenberg.lists@dewire.com>
 Ryan Anderson <ryan@michonline.com> <rda@google.com>
 Salikh Zakirov <salikh.zakirov@gmail.com> <Salikh.Zakirov@Intel.com>
 Sam Vilain <sam@vilain.net> <sam.vilain@catalyst.net.nz>
+Sam Vilain <sam@vilain.net> sam@vilain.net
 Santi Béjar <santi@agolina.net> <sbejar@gmail.com>
 Sean Estabrooks <seanlkml@sympatico.ca>
 Sebastian Schuberth <sschuberth@gmail.com> <sschuberth@visageimaging.com>
@@ -181,9 +191,11 @@ Simon Hausmann <hausmann@kde.org> <shausman@trolltech.com>
 Stefan Naewe <stefan.naewe@gmail.com> <stefan.naewe@atlas-elektronik.com>
 Stefan Naewe <stefan.naewe@gmail.com> <stefan.naewe@googlemail.com>
 Stefan Sperling <stsp@elego.de> <stsp@stsp.name>
+Štěpán Němec <stepnem@gmail.com> <stepan.nemec@gmail.com>
 Stephen Boyd <bebarino@gmail.com> <sboyd@codeaurora.org>
 Steven Drake <sdrake@xnet.co.nz> <sdrake@ihug.co.nz>
 Steven Grimm <koreth@midwinter.com> <sgrimm@sgrimm-mbp.local>
+Steven Grimm <koreth@midwinter.com> koreth@midwinter.com
 Steven Walter <stevenrwalter@gmail.com> <swalter@lexmark.com>
 Steven Walter <stevenrwalter@gmail.com> <swalter@lpdev.prtdev.lexmark.com>
 Sven Verdoolaege <skimo@kotnet.org> <Sven.Verdoolaege@cs.kuleuven.ac.be>
