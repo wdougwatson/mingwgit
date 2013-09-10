@@ -62,6 +62,9 @@ struct commit_list *commit_list_insert_by_date(struct commit *item,
 				    struct commit_list **list);
 void commit_list_sort_by_date(struct commit_list **list);
 
+/* Shallow copy of the input list */
+struct commit_list *copy_commit_list(struct commit_list *list);
+
 void free_commit_list(struct commit_list *list);
 
 /* Commit formats */
@@ -205,7 +208,7 @@ int in_merge_bases_many(struct commit *, int, struct commit **);
 
 extern int interactive_add(int argc, const char **argv, const char *prefix, int patch);
 extern int run_add_interactive(const char *revision, const char *patch_mode,
-			       const char **pathspec);
+			       const struct pathspec *pathspec);
 
 static inline int single_parent(struct commit *commit)
 {

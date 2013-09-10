@@ -27,6 +27,7 @@ struct helper_data {
 		push : 1,
 		connect : 1,
 		signed_tags : 1,
+		check_connectivity : 1,
 		no_disconnect_req : 1;
 	char *export_marks;
 	char *import_marks;
@@ -186,6 +187,8 @@ static struct child_process *get_helper(struct transport *transport)
 			data->bidi_import = 1;
 		else if (!strcmp(capname, "export"))
 			data->export = 1;
+		else if (!strcmp(capname, "check-connectivity"))
+			data->check_connectivity = 1;
 		else if (!data->refspecs && !prefixcmp(capname, "refspec ")) {
 			ALLOC_GROW(refspecs,
 				   refspec_nr + 1,
@@ -349,6 +352,9 @@ static int fetch_with_fetch(struct transport *transport,
 	struct strbuf buf = STRBUF_INIT;
 
 	standard_options(transport);
+	if (data->check_connectivity &&
+	    data->transport_options.check_self_contained_and_connected)
+		set_helper_option(transport, "check-connectivity", "true");
 
 	for (i = 0; i < nr_heads; i++) {
 		const struct ref *posn = to_fetch[i];
@@ -372,6 +378,10 @@ static int fetch_with_fetch(struct transport *transport,
 			else
 				transport->pack_lockfile = xstrdup(name);
 		}
+		else if (data->check_connectivity &&
+			 data->transport_options.check_self_contained_and_connected &&
+			 !strcmp(buf.buf, "connectivity-ok"))
+			data->transport_options.self_contained_and_connected = 1;
 		else if (!buf.len)
 			break;
 		else
@@ -683,6 +693,11 @@ static int push_update_ref_status(struct strbuf *buf,
 			free(msg);
 			msg = NULL;
 		}
+		else if (!strcmp(msg, "stale info")) {
+			status = REF_STATUS_REJECT_STALE;
+			free(msg);
+			msg = NULL;
+		}
 	}
 
 	if (*ref)
@@ -737,13 +752,15 @@ static void push_update_refs_status(struct helper_data *data,
 }
 
 static int push_refs_with_push(struct transport *transport,
-		struct ref *remote_refs, int flags)
+			       struct ref *remote_refs, int flags)
 {
 	int force_all = flags & TRANSPORT_PUSH_FORCE;
 	int mirror = flags & TRANSPORT_PUSH_MIRROR;
 	struct helper_data *data = transport->data;
 	struct strbuf buf = STRBUF_INIT;
 	struct ref *ref;
+	struct string_list cas_options = STRING_LIST_INIT_DUP;
+	struct string_list_item *cas_option;
 
 	get_helper(transport);
 	if (!data->push)
@@ -756,6 +773,7 @@ static int push_refs_with_push(struct transport *transport,
 		/* Check for statuses set by set_ref_status_for_push() */
 		switch (ref->status) {
 		case REF_STATUS_REJECT_NONFASTFORWARD:
+		case REF_STATUS_REJECT_STALE:
 		case REF_STATUS_REJECT_ALREADY_EXISTS:
 		case REF_STATUS_UPTODATE:
 			continue;
@@ -778,11 +796,29 @@ static int push_refs_with_push(struct transport *transport,
 		strbuf_addch(&buf, ':');
 		strbuf_addstr(&buf, ref->name);
 		strbuf_addch(&buf, '\n');
+
+		/*
+		 * The "--force-with-lease" options without explicit
+		 * values to expect have already been expanded into
+		 * the ref->old_sha1_expect[] field; we can ignore
+		 * transport->smart_options->cas altogether and instead
+		 * can enumerate them from the refs.
+		 */
+		if (ref->expect_old_sha1) {
+			struct strbuf cas = STRBUF_INIT;
+			strbuf_addf(&cas, "%s:%s",
+				    ref->name, sha1_to_hex(ref->old_sha1_expect));
+			string_list_append(&cas_options, strbuf_detach(&cas, NULL));
+		}
 	}
-	if (buf.len == 0)
+	if (buf.len == 0) {
+		string_list_clear(&cas_options, 0);
 		return 0;
+	}
 
 	standard_options(transport);
+	for_each_string_list_item(cas_option, &cas_options)
+		set_helper_option(transport, "cas", cas_option->string);
 
 	if (flags & TRANSPORT_PUSH_DRY_RUN) {
 		if (set_helper_option(transport, "dry-run", "true") != 0)

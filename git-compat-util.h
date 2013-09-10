@@ -185,11 +185,6 @@ typedef unsigned long uintptr_t;
 #define probe_utf8_pathname_composition(a,b)
 #endif
 
-#ifdef NEEDS_CLIPPED_WRITE
-ssize_t clipped_write(int fildes, const void *buf, size_t nbyte);
-#define write(x,y,z) clipped_write((x),(y),(z))
-#endif
-
 #ifdef MKDIR_WO_TRAILING_SLASH
 #define mkdir(a,b) compat_mkdir_wo_trailing_slash((a),(b))
 extern int compat_mkdir_wo_trailing_slash(const char*, mode_t);
@@ -329,6 +324,16 @@ extern NORETURN void die(const char *err, ...) __attribute__((format (printf, 1,
 extern NORETURN void die_errno(const char *err, ...) __attribute__((format (printf, 1, 2)));
 extern int error(const char *err, ...) __attribute__((format (printf, 1, 2)));
 extern void warning(const char *err, ...) __attribute__((format (printf, 1, 2)));
+
+#ifndef NO_OPENSSL
+#ifdef APPLE_COMMON_CRYPTO
+#include "compat/apple-common-crypto.h"
+#else
+#include <openssl/evp.h>
+#include <openssl/hmac.h>
+#endif /* APPLE_COMMON_CRYPTO */
+#include <openssl/x509v3.h>
+#endif /* NO_OPENSSL */
 
 /*
  * Let callers be aware of the constant return value; this can help
@@ -514,7 +519,7 @@ int inet_pton(int af, const char *src, void *dst);
 const char *inet_ntop(int af, const void *src, char *dst, size_t size);
 #endif
 
-extern void release_pack_memory(size_t, int);
+extern void release_pack_memory(size_t);
 
 typedef void (*try_to_free_t)(size_t);
 extern try_to_free_t set_try_to_free_routine(try_to_free_t);

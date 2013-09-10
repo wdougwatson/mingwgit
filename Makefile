@@ -69,9 +69,6 @@ all::
 # Define NO_MSGFMT_EXTENDED_OPTIONS if your implementation of msgfmt
 # doesn't support GNU extensions like --check and --statistics
 #
-# Define NEEDS_CLIPPED_WRITE if your write(2) cannot write more than
-# INT_MAX bytes at once (e.g. MacOS X).
-#
 # Define HAVE_PATHS_H if you have paths.h and want to use the default PATH
 # it specifies.
 #
@@ -580,6 +577,7 @@ TEST_PROGRAMS_NEED_X += test-sigchain
 TEST_PROGRAMS_NEED_X += test-string-list
 TEST_PROGRAMS_NEED_X += test-subprocess
 TEST_PROGRAMS_NEED_X += test-svn-fe
+TEST_PROGRAMS_NEED_X += test-urlmatch-normalization
 TEST_PROGRAMS_NEED_X += test-wildmatch
 
 TEST_PROGRAMS = $(patsubst %,%$X,$(TEST_PROGRAMS_NEED_X))
@@ -736,6 +734,7 @@ LIB_H += tree-walk.h
 LIB_H += tree.h
 LIB_H += unpack-trees.h
 LIB_H += url.h
+LIB_H += urlmatch.h
 LIB_H += userdiff.h
 LIB_H += utf8.h
 LIB_H += varint.h
@@ -886,6 +885,7 @@ LIB_OBJS += tree.o
 LIB_OBJS += tree-walk.o
 LIB_OBJS += unpack-trees.o
 LIB_OBJS += url.o
+LIB_OBJS += urlmatch.o
 LIB_OBJS += usage.o
 LIB_OBJS += userdiff.o
 LIB_OBJS += utf8.o
@@ -1181,6 +1181,9 @@ ifdef NEEDS_SSL_WITH_CRYPTO
 	LIB_4_CRYPTO = $(OPENSSL_LINK) -lcrypto -lssl
 else
 	LIB_4_CRYPTO = $(OPENSSL_LINK) -lcrypto
+endif
+ifdef APPLE_COMMON_CRYPTO
+	LIB_4_CRYPTO += -framework Security -framework CoreFoundation
 endif
 endif
 ifdef NEEDS_LIBICONV
@@ -1491,11 +1494,6 @@ endif
 
 ifndef NO_MSGFMT_EXTENDED_OPTIONS
 	MSGFMT += --check --statistics
-endif
-
-ifdef NEEDS_CLIPPED_WRITE
-	BASIC_CFLAGS += -DNEEDS_CLIPPED_WRITE
-	COMPAT_OBJS += compat/clipped-write.o
 endif
 
 ifneq (,$(XDL_FAST_HASH))

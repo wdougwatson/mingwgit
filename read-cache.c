@@ -1114,7 +1114,8 @@ static void show_file(const char * fmt, const char * name, int in_porcelain,
 	printf(fmt, name);
 }
 
-int refresh_index(struct index_state *istate, unsigned int flags, const char **pathspec,
+int refresh_index(struct index_state *istate, unsigned int flags,
+		  const struct pathspec *pathspec,
 		  char *seen, const char *header_msg)
 {
 	int i;
@@ -1149,7 +1150,7 @@ int refresh_index(struct index_state *istate, unsigned int flags, const char **p
 			continue;
 
 		if (pathspec &&
-		    !match_pathspec(pathspec, ce->name, ce_namelen(ce), 0, seen))
+		    !match_pathspec_depth(pathspec, ce->name, ce_namelen(ce), 0, seen))
 			filtered = 1;
 
 		if (ce_stage(ce)) {
@@ -1229,14 +1230,14 @@ static struct cache_entry *refresh_cache_entry(struct cache_entry *ce, int reall
 struct ondisk_cache_entry {
 	struct cache_time ctime;
 	struct cache_time mtime;
-	unsigned int dev;
-	unsigned int ino;
-	unsigned int mode;
-	unsigned int uid;
-	unsigned int gid;
-	unsigned int size;
+	uint32_t dev;
+	uint32_t ino;
+	uint32_t mode;
+	uint32_t uid;
+	uint32_t gid;
+	uint32_t size;
 	unsigned char sha1[20];
-	unsigned short flags;
+	uint16_t flags;
 	char name[FLEX_ARRAY]; /* more */
 };
 
@@ -1248,15 +1249,15 @@ struct ondisk_cache_entry {
 struct ondisk_cache_entry_extended {
 	struct cache_time ctime;
 	struct cache_time mtime;
-	unsigned int dev;
-	unsigned int ino;
-	unsigned int mode;
-	unsigned int uid;
-	unsigned int gid;
-	unsigned int size;
+	uint32_t dev;
+	uint32_t ino;
+	uint32_t mode;
+	uint32_t uid;
+	uint32_t gid;
+	uint32_t size;
 	unsigned char sha1[20];
-	unsigned short flags;
-	unsigned short flags2;
+	uint16_t flags;
+	uint16_t flags2;
 	char name[FLEX_ARRAY]; /* more */
 };
 

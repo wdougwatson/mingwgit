@@ -202,17 +202,15 @@ static int commit_index_files(void)
  * and return the paths that match the given pattern in list.
  */
 static int list_paths(struct string_list *list, const char *with_tree,
-		      const char *prefix, const char **pattern)
+		      const char *prefix, const struct pathspec *pattern)
 {
 	int i;
 	char *m;
 
-	if (!pattern)
+	if (!pattern->nr)
 		return 0;
 
-	for (i = 0; pattern[i]; i++)
-		;
-	m = xcalloc(1, i);
+	m = xcalloc(1, pattern->nr);
 
 	if (with_tree) {
 		char *max_prefix = common_prefix(pattern);
@@ -226,7 +224,7 @@ static int list_paths(struct string_list *list, const char *with_tree,
 
 		if (ce->ce_flags & CE_UPDATE)
 			continue;
-		if (!match_pathspec(pattern, ce->name, ce_namelen(ce), 0, m))
+		if (!match_pathspec_depth(pattern, ce->name, ce_namelen(ce), 0, m))
 			continue;
 		item = string_list_insert(list, ce->name);
 		if (ce_skip_worktree(ce))
@@ -298,17 +296,17 @@ static char *prepare_index(int argc, const char **argv, const char *prefix,
 {
 	int fd;
 	struct string_list partial;
-	const char **pathspec = NULL;
+	struct pathspec pathspec;
 	char *old_index_env = NULL;
 	int refresh_flags = REFRESH_QUIET;
 
 	if (is_status)
 		refresh_flags |= REFRESH_UNMERGED;
+	parse_pathspec(&pathspec, 0,
+		       PATHSPEC_PREFER_FULL,
+		       prefix, argv);
 
-	if (*argv)
-		pathspec = get_pathspec(prefix, argv);
-
-	if (read_cache_preload(pathspec) < 0)
+	if (read_cache_preload(&pathspec) < 0)
 		die(_("index file corrupt"));
 
 	if (interactive) {
@@ -350,9 +348,9 @@ static char *prepare_index(int argc, const char **argv, const char *prefix,
 	 * (A) if all goes well, commit the real index;
 	 * (B) on failure, rollback the real index.
 	 */
-	if (all || (also && pathspec && *pathspec)) {
+	if (all || (also && pathspec.nr)) {
 		fd = hold_locked_index(&index_lock, 1);
-		add_files_to_cache(also ? prefix : NULL, pathspec, 0);
+		add_files_to_cache(also ? prefix : NULL, &pathspec, 0);
 		refresh_cache_or_die(refresh_flags);
 		update_main_cache_tree(WRITE_TREE_SILENT);
 		if (write_cache(fd, active_cache, active_nr) ||
@@ -371,7 +369,7 @@ static char *prepare_index(int argc, const char **argv, const char *prefix,
 	 * and create commit from the_index.
 	 * We still need to refresh the index here.
 	 */
-	if (!only && (!pathspec || !*pathspec)) {
+	if (!only && !pathspec.nr) {
 		fd = hold_locked_index(&index_lock, 1);
 		refresh_cache_or_die(refresh_flags);
 		if (active_cache_changed) {
@@ -416,7 +414,7 @@ static char *prepare_index(int argc, const char **argv, const char *prefix,
 
 	memset(&partial, 0, sizeof(partial));
 	partial.strdup_strings = 1;
-	if (list_paths(&partial, !current_head ? NULL : "HEAD", prefix, pathspec))
+	if (list_paths(&partial, !current_head ? NULL : "HEAD", prefix, &pathspec))
 		exit(1);
 
 	discard_cache();
@@ -1091,7 +1089,7 @@ static int parse_and_validate_options(int argc, const char *argv[],
 	if (patch_interactive)
 		interactive = 1;
 
-	if (!!also + !!only + !!all + !!interactive > 1)
+	if (also + only + all + interactive > 1)
 		die(_("Only one of --include/--only/--all/--interactive/--patch can be used."));
 	if (argc == 0 && (also || (only && !amend)))
 		die(_("No paths with --include/--only does not make sense."));
@@ -1228,14 +1226,14 @@ int cmd_status(int argc, const char **argv, const char *prefix)
 		OPT_SET_INT(0, "long", &status_format,
 			    N_("show status in long format (default)"),
 			    STATUS_FORMAT_LONG),
-		OPT_BOOLEAN('z', "null", &s.null_termination,
-			    N_("terminate entries with NUL")),
+		OPT_BOOL('z', "null", &s.null_termination,
+			 N_("terminate entries with NUL")),
 		{ OPTION_STRING, 'u', "untracked-files", &untracked_files_arg,
 		  N_("mode"),
 		  N_("show untracked files, optional modes: all, normal, no. (Default: all)"),
 		  PARSE_OPT_OPTARG, NULL, (intptr_t)"all" },
-		OPT_BOOLEAN(0, "ignored", &show_ignored_in_status,
-			    N_("show ignored files")),
+		OPT_BOOL(0, "ignored", &show_ignored_in_status,
+			 N_("show ignored files")),
 		{ OPTION_STRING, 0, "ignore-submodules", &ignore_submodule_arg, N_("when"),
 		  N_("ignore changes to submodules, optional when: all, dirty, untracked. (Default: all)"),
 		  PARSE_OPT_OPTARG, NULL, (intptr_t)"all" },
@@ -1259,11 +1257,12 @@ int cmd_status(int argc, const char **argv, const char *prefix)
 	handle_untracked_files_arg(&s);
 	if (show_ignored_in_status)
 		s.show_ignored_files = 1;
-	if (*argv)
-		s.pathspec = get_pathspec(prefix, argv);
+	parse_pathspec(&s.pathspec, 0,
+		       PATHSPEC_PREFER_FULL,
+		       prefix, argv);
 
-	read_cache_preload(s.pathspec);
-	refresh_index(&the_index, REFRESH_QUIET|REFRESH_UNMERGED, s.pathspec, NULL, NULL);
+	read_cache_preload(&s.pathspec);
+	refresh_index(&the_index, REFRESH_QUIET|REFRESH_UNMERGED, &s.pathspec, NULL, NULL);
 
 	fd = hold_locked_index(&index_lock, 0);
 	if (0 <= fd)
@@ -1434,24 +1433,24 @@ int cmd_commit(int argc, const char **argv, const char *prefix)
 		OPT_STRING('C', "reuse-message", &use_message, N_("commit"), N_("reuse message from specified commit")),
 		OPT_STRING(0, "fixup", &fixup_message, N_("commit"), N_("use autosquash formatted message to fixup specified commit")),
 		OPT_STRING(0, "squash", &squash_message, N_("commit"), N_("use autosquash formatted message to squash specified commit")),
-		OPT_BOOLEAN(0, "reset-author", &renew_authorship, N_("the commit is authored by me now (used with -C/-c/--amend)")),
-		OPT_BOOLEAN('s', "signoff", &signoff, N_("add Signed-off-by:")),
+		OPT_BOOL(0, "reset-author", &renew_authorship, N_("the commit is authored by me now (used with -C/-c/--amend)")),
+		OPT_BOOL('s', "signoff", &signoff, N_("add Signed-off-by:")),
 		OPT_FILENAME('t', "template", &template_file, N_("use specified template file")),
 		OPT_BOOL('e', "edit", &edit_flag, N_("force edit of commit")),
 		OPT_STRING(0, "cleanup", &cleanup_arg, N_("default"), N_("how to strip spaces and #comments from message")),
-		OPT_BOOLEAN(0, "status", &include_status, N_("include status in commit message template")),
+		OPT_BOOL(0, "status", &include_status, N_("include status in commit message template")),
 		{ OPTION_STRING, 'S', "gpg-sign", &sign_commit, N_("key id"),
 		  N_("GPG sign commit"), PARSE_OPT_OPTARG, NULL, (intptr_t) "" },
 		/* end commit message options */
 
 		OPT_GROUP(N_("Commit contents options")),
-		OPT_BOOLEAN('a', "all", &all, N_("commit all changed files")),
-		OPT_BOOLEAN('i', "include", &also, N_("add specified files to index for commit")),
-		OPT_BOOLEAN(0, "interactive", &interactive, N_("interactively add files")),
-		OPT_BOOLEAN('p', "patch", &patch_interactive, N_("interactively add changes")),
-		OPT_BOOLEAN('o', "only", &only, N_("commit only specified files")),
-		OPT_BOOLEAN('n', "no-verify", &no_verify, N_("bypass pre-commit hook")),
-		OPT_BOOLEAN(0, "dry-run", &dry_run, N_("show what would be committed")),
+		OPT_BOOL('a', "all", &all, N_("commit all changed files")),
+		OPT_BOOL('i', "include", &also, N_("add specified files to index for commit")),
+		OPT_BOOL(0, "interactive", &interactive, N_("interactively add files")),
+		OPT_BOOL('p', "patch", &patch_interactive, N_("interactively add changes")),
+		OPT_BOOL('o', "only", &only, N_("commit only specified files")),
+		OPT_BOOL('n', "no-verify", &no_verify, N_("bypass pre-commit hook")),
+		OPT_BOOL(0, "dry-run", &dry_run, N_("show what would be committed")),
 		OPT_SET_INT(0, "short", &status_format, N_("show status concisely"),
 			    STATUS_FORMAT_SHORT),
 		OPT_BOOL(0, "branch", &s.show_branch, N_("show branch information")),
@@ -1460,19 +1459,17 @@ int cmd_commit(int argc, const char **argv, const char *prefix)
 		OPT_SET_INT(0, "long", &status_format,
 			    N_("show status in long format (default)"),
 			    STATUS_FORMAT_LONG),
-		OPT_BOOLEAN('z', "null", &s.null_termination,
-			    N_("terminate entries with NUL")),
-		OPT_BOOLEAN(0, "amend", &amend, N_("amend previous commit")),
-		OPT_BOOLEAN(0, "no-post-rewrite", &no_post_rewrite, N_("bypass post-rewrite hook")),
+		OPT_BOOL('z', "null", &s.null_termination,
+			 N_("terminate entries with NUL")),
+		OPT_BOOL(0, "amend", &amend, N_("amend previous commit")),
+		OPT_BOOL(0, "no-post-rewrite", &no_post_rewrite, N_("bypass post-rewrite hook")),
 		{ OPTION_STRING, 'u', "untracked-files", &untracked_files_arg, N_("mode"), N_("show untracked files, optional modes: all, normal, no. (Default: all)"), PARSE_OPT_OPTARG, NULL, (intptr_t)"all" },
 		/* end commit contents options */
 
-		{ OPTION_BOOLEAN, 0, "allow-empty", &allow_empty, NULL,
-		  N_("ok to record an empty change"),
-		  PARSE_OPT_NOARG | PARSE_OPT_HIDDEN },
-		{ OPTION_BOOLEAN, 0, "allow-empty-message", &allow_empty_message, NULL,
-		  N_("ok to record a change with an empty message"),
-		  PARSE_OPT_NOARG | PARSE_OPT_HIDDEN },
+		OPT_HIDDEN_BOOL(0, "allow-empty", &allow_empty,
+				N_("ok to record an empty change")),
+		OPT_HIDDEN_BOOL(0, "allow-empty-message", &allow_empty_message,
+				N_("ok to record a change with an empty message")),
 
 		OPT_END()
 	};
