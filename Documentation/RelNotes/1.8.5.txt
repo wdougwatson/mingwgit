@@ -48,6 +48,14 @@ Updates since v1.8.4
 
 Foreign interfaces, subsystems and ports.
 
+ * "git-svn" used with SVN 1.8.0 when talking over https:// connection
+   dumped core due to a bug in the serf library that SVN uses.  Work
+   it around on our side, even though the SVN side is being fixed.
+
+ * On MacOS X, we detected if the filesystem needs the "pre-composed
+   unicode strings" workaround, but did not automatically enable it.
+   Now we do.
+
  * remote-hg remote helper misbehaved when interacting with a local Hg
    repository relative to the home directory, e.g. "clone hg::~/there".
 
@@ -62,6 +70,20 @@ Foreign interfaces, subsystems and ports.
 
 
 UI, Workflows & Features
+
+ * A packfile that stores the same object more than once is broken and
+   will be rejected by "git index-pack" that is run when receiving
+   data over the wire.
+
+ * Earlier we started rejecting an attempt to add 0{40} object name to
+   the index and to tree objects, but it sometimes is necessary to
+   allow so to be able to use tools like filter-branch to correct such
+   broken tree objects.  "filter-branch" can again be used to to do
+   so.
+
+ * "git config" did not provide a way to set or access numbers larger
+   than a native "int" on the platform; it now provides 64-bit signed
+   integers on all platforms.
 
  * "git pull --rebase" always chose to do the bog-standard flattening
    rebase.  You can tell it to run "rebase --preserve-merges" by
@@ -122,6 +144,10 @@ UI, Workflows & Features
 
 Performance, Internal Implementation, etc.
 
+ * If a build-time fallback is set to "cat" instead of "less", we
+   should apply the same "no subprocess or pipe" optimization as we
+   apply to user-supplied GIT_PAGER=cat.
+
  * Many commands use --dashed-option as a operation mode selector
    (e.g. "git tag --delete") that the user can use at most one
    (e.g. "git tag --delete --verify" is a nonsense) and you cannot
@@ -150,6 +176,37 @@ Fixes since v1.8.4
 Unless otherwise noted, all the fixes since v1.8.4 in the maintenance
 track are contained in this release (see release notes to them for
 details).
+
+ * "git cvsserver" computed the permission mode bits incorrectly for
+   executable files.
+   (merge 1b48d56 jc/cvsserver-perm-bit-fix later to maint).
+
+ * When send-email comes up with an error message to die with upon
+   failure to start an SSL session, it tried to read the error string
+   from a wrong place.
+   (merge 6cb0c88 bc/send-email-ssl-die-message-fix later to maint).
+
+ * The implementation of "add -i" has a crippling code to work around
+   ActiveState Perl limitation but it by mistake also triggered on Git
+   for Windows where MSYS perl is used.
+   (merge df17e77 js/add-i-mingw later to maint).
+
+ * We made sure that we notice the user-supplied GIT_DIR is actually a
+   gitfile, but did not do the same when the default ".git" is a
+   gitfile.
+   (merge 487a2b7 nd/git-dir-pointing-at-gitfile later to maint).
+
+ * When an object is not found after checking the packfiles and then
+   loose object directory, read_sha1_file() re-checks the packfiles to
+   prevent racing with a concurrent repacker; teach the same logic to
+   has_sha1_file().
+   (merge 45e8a74 jk/has-sha1-file-retry-packed later to maint).
+
+ * "git commit --author=$name", when $name is not in the canonical
+   "A. U. Thor <au.thor@example.xz>" format, looks for a matching name
+   from existing history, but did not consult mailmap to grab the
+   preferred author name.
+   (merge ea16794 ap/commit-author-mailmap later to maint).
 
  * "git ls-files -k" needs to crawl only the part of the working tree
    that may overlap the paths in the index to find killed files, but
