@@ -50,6 +50,7 @@ struct wt_status {
 	enum commit_whence whence;
 	int nowarn;
 	int use_color;
+	int display_comment_prefix;
 	int relative_paths;
 	int submodule_summary;
 	int show_ignored_files;
@@ -59,6 +60,7 @@ struct wt_status {
 	unsigned colopts;
 	int null_termination;
 	int show_branch;
+	int hints;
 
 	/* These are computed during processing of the individual sections */
 	int commitable;

@@ -164,6 +164,15 @@ static void determine_whence(struct wt_status *s)
 		s->whence = whence;
 }
 
+static void status_init_config(struct wt_status *s, config_fn_t fn)
+{
+	wt_status_prepare(s);
+	gitmodules_config();
+	git_config(fn, s);
+	determine_whence(s);
+	s->hints = advice_status_hints; /* must come after git_config() */
+}
+
 static void rollback_index_files(void)
 {
 	switch (commit_style) {
@@ -598,6 +607,7 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 	const char *hook_arg2 = NULL;
 	int ident_shown = 0;
 	int clean_message_contents = (cleanup_mode != CLEANUP_NONE);
+	int old_display_comment_prefix;
 
 	/* This checks and barfs if author is badly specified */
 	determine_author_info(author_ident);
@@ -694,6 +704,16 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 	s->fp = fopen(git_path(commit_editmsg), "w");
 	if (s->fp == NULL)
 		die_errno(_("could not open '%s'"), git_path(commit_editmsg));
+
+	/* Ignore status.displayCommentPrefix: we do need comments in COMMIT_EDITMSG. */
+	old_display_comment_prefix = s->display_comment_prefix;
+	s->display_comment_prefix = 1;
+
+	/*
+	 * Most hints are counter-productive when the commit has
+	 * already started.
+	 */
+	s->hints = 0;
 
 	if (clean_message_contents)
 		stripspace(&sb, 0);
@@ -820,6 +840,7 @@ static int prepare_to_commit(const char *index_file, const char *prefix,
 	 */
 	if (!commitable && whence != FROM_MERGE && !allow_empty &&
 	    !(amend && is_a_merge(current_head))) {
+		s->display_comment_prefix = old_display_comment_prefix;
 		run_status(stdout, index_file, prefix, 0, s);
 		if (amend)
 			fputs(_(empty_amend_advice), stderr);
@@ -1186,6 +1207,10 @@ static int git_status_config(const char *k, const char *v, void *cb)
 		s->use_color = git_config_colorbool(k, v);
 		return 0;
 	}
+	if (!strcmp(k, "status.displaycommentprefix")) {
+		s->display_comment_prefix = git_config_bool(k, v);
+		return 0;
+	}
 	if (!prefixcmp(k, "status.color.") || !prefixcmp(k, "color.status.")) {
 		int slot = parse_status_slot(k, 13);
 		if (slot < 0)
@@ -1250,10 +1275,7 @@ int cmd_status(int argc, const char **argv, const char *prefix)
 	if (argc == 2 && !strcmp(argv[1], "-h"))
 		usage_with_options(builtin_status_usage, builtin_status_options);
 
-	wt_status_prepare(&s);
-	gitmodules_config();
-	git_config(git_status_config, &s);
-	determine_whence(&s);
+	status_init_config(&s, git_status_config);
 	argc = parse_options(argc, argv, prefix,
 			     builtin_status_options,
 			     builtin_status_usage, 0);
@@ -1495,11 +1517,8 @@ int cmd_commit(int argc, const char **argv, const char *prefix)
 	if (argc == 2 && !strcmp(argv[1], "-h"))
 		usage_with_options(builtin_commit_usage, builtin_commit_options);
 
-	wt_status_prepare(&s);
-	gitmodules_config();
-	git_config(git_commit_config, &s);
+	status_init_config(&s, git_commit_config);
 	status_format = STATUS_FORMAT_NONE; /* Ignore status.short */
-	determine_whence(&s);
 	s.colopts = 0;
 
 	if (get_sha1("HEAD", sha1))
@@ -1621,7 +1640,7 @@ int cmd_commit(int argc, const char **argv, const char *prefix)
 					   !current_head
 					   ? NULL
 					   : current_head->object.sha1,
-					   0);
+					   0, NULL);
 
 	nl = strchr(sb.buf, '\n');
 	if (nl)
