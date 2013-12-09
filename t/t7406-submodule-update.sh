@@ -323,6 +323,21 @@ test_expect_success 'submodule update - command in .git/config catches failure' 
 	)
 '
 
+test_expect_success 'submodule init does not copy command into .git/config' '
+	(cd super &&
+	 H=$(git ls-files -s submodule | cut -d" " -f2) &&
+	 mkdir submodule1 &&
+	 git update-index --add --cacheinfo 160000 $H submodule1 &&
+	 git config -f .gitmodules submodule.submodule1.path submodule1 &&
+	 git config -f .gitmodules submodule.submodule1.url ../submodule &&
+	 git config -f .gitmodules submodule.submodule1.update !false &&
+	 git submodule init submodule1 &&
+	 echo "none" >expect &&
+	 git config submodule.submodule1.update >actual &&
+	 test_cmp expect actual
+	)
+'
+
 test_expect_success 'submodule init picks up rebase' '
 	(cd super &&
 	 git config -f .gitmodules submodule.rebasing.update rebase &&
@@ -747,6 +762,17 @@ test_expect_success 'submodule update clone shallow submodule' '
 	 (cd submodule &&
 	  test 1 = $(git log --oneline | wc -l)
 	 )
+)
+'
+
+test_expect_success 'submodule update --recursive drops module name before recursing' '
+	(cd super2 &&
+	 (cd deeper/submodule/subsubmodule &&
+	  git checkout HEAD^
+	 ) &&
+	 git submodule update --recursive deeper/submodule >actual &&
+	 test_i18ngrep "Submodule path .deeper/submodule/subsubmodule.: checked out" actual
 	)
 '
+
 test_done
