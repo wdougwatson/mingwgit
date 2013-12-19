@@ -508,9 +508,9 @@ static void write_followtags(const struct ref *refs, const char *msg)
 {
 	const struct ref *ref;
 	for (ref = refs; ref; ref = ref->next) {
-		if (prefixcmp(ref->name, "refs/tags/"))
+		if (!starts_with(ref->name, "refs/tags/"))
 			continue;
-		if (!suffixcmp(ref->name, "^{}"))
+		if (ends_with(ref->name, "^{}"))
 			continue;
 		if (!has_sha1_file(ref->old_sha1))
 			continue;
@@ -578,7 +578,7 @@ static void update_remote_refs(const struct ref *refs,
 static void update_head(const struct ref *our, const struct ref *remote,
 			const char *msg)
 {
-	if (our && !prefixcmp(our->name, "refs/heads/")) {
+	if (our && starts_with(our->name, "refs/heads/")) {
 		/* Local default branch link */
 		create_symref("HEAD", our->name, NULL);
 		if (!option_bare) {
@@ -625,7 +625,7 @@ static int checkout(void)
 		if (advice_detached_head)
 			detach_advice(sha1_to_hex(sha1));
 	} else {
-		if (prefixcmp(head, "refs/heads/"))
+		if (!starts_with(head, "refs/heads/"))
 			die(_("HEAD not found below refs/heads!"));
 	}
 	free(head);
@@ -795,6 +795,10 @@ int cmd_clone(int argc, const char **argv, const char *prefix)
 		warning(_("--depth is ignored in local clones; use file:// instead."));
 	if (option_local > 0 && !is_local)
 		warning(_("--local is ignored"));
+
+	/* no need to be strict, transport_set_option() will validate it again */
+	if (option_depth && atoi(option_depth) < 1)
+		die(_("depth %s is not a positive number"), option_depth);
 
 	if (argc == 2)
 		dir = xstrdup(argv[1]);

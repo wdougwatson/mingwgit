@@ -169,13 +169,13 @@ static void set_upstreams(struct transport *transport, struct ref *refs,
 		remotename = ref->name;
 		tmp = resolve_ref_unsafe(localname, sha, 1, &flag);
 		if (tmp && flag & REF_ISSYMREF &&
-			!prefixcmp(tmp, "refs/heads/"))
+			starts_with(tmp, "refs/heads/"))
 			localname = tmp;
 
 		/* Both source and destination must be local branches. */
-		if (!localname || prefixcmp(localname, "refs/heads/"))
+		if (!localname || !starts_with(localname, "refs/heads/"))
 			continue;
-		if (!remotename || prefixcmp(remotename, "refs/heads/"))
+		if (!remotename || !starts_with(remotename, "refs/heads/"))
 			continue;
 
 		if (!pretend)
@@ -191,7 +191,7 @@ static void set_upstreams(struct transport *transport, struct ref *refs,
 
 static const char *rsync_url(const char *url)
 {
-	return prefixcmp(url, "rsync://") ? skip_prefix(url, "rsync:") : url;
+	return !starts_with(url, "rsync://") ? skip_prefix(url, "rsync:") : url;
 }
 
 static struct ref *get_refs_via_rsync(struct transport *transport, int for_push)
@@ -296,8 +296,8 @@ static int write_one_ref(const char *name, const unsigned char *sha1,
 	FILE *f;
 
 	/* when called via for_each_ref(), flags is non-zero */
-	if (flags && prefixcmp(name, "refs/heads/") &&
-			prefixcmp(name, "refs/tags/"))
+	if (flags && !starts_with(name, "refs/heads/") &&
+			!starts_with(name, "refs/tags/"))
 		return 0;
 
 	strbuf_addstr(buf, name);
@@ -652,7 +652,7 @@ static void print_ok_ref_status(struct ref *ref, int porcelain)
 		print_ref_status('-', "[deleted]", ref, NULL, NULL, porcelain);
 	else if (is_null_sha1(ref->old_sha1))
 		print_ref_status('*',
-			(!prefixcmp(ref->name, "refs/tags/") ? "[new tag]" :
+			(starts_with(ref->name, "refs/tags/") ? "[new tag]" :
 			"[new branch]"),
 			ref, ref->peer_ref, NULL, porcelain);
 	else {
@@ -885,14 +885,6 @@ void transport_take_over(struct transport *transport,
 	transport->cannot_reuse = 1;
 }
 
-static int is_local(const char *url)
-{
-	const char *colon = strchr(url, ':');
-	const char *slash = strchr(url, '/');
-	return !colon || (slash && slash < colon) ||
-		has_dos_drive_prefix(url);
-}
-
 static int is_file(const char *url)
 {
 	struct stat buf;
@@ -930,18 +922,18 @@ struct transport *transport_get(struct remote *remote, const char *url)
 
 		while (is_urlschemechar(p == url, *p))
 			p++;
-		if (!prefixcmp(p, "::"))
+		if (starts_with(p, "::"))
 			helper = xstrndup(url, p - url);
 	}
 
 	if (helper) {
 		transport_helper_init(ret, helper);
-	} else if (!prefixcmp(url, "rsync:")) {
+	} else if (starts_with(url, "rsync:")) {
 		ret->get_refs_list = get_refs_via_rsync;
 		ret->fetch = fetch_objs_via_rsync;
 		ret->push = rsync_transport_push;
 		ret->smart_options = NULL;
-	} else if (is_local(url) && is_file(url) && is_bundle(url, 1)) {
+	} else if (url_is_local_not_ssh(url) && is_file(url) && is_bundle(url, 1)) {
 		struct bundle_transport_data *data = xcalloc(1, sizeof(*data));
 		ret->data = data;
 		ret->get_refs_list = get_refs_from_bundle;
@@ -949,11 +941,11 @@ struct transport *transport_get(struct remote *remote, const char *url)
 		ret->disconnect = close_bundle;
 		ret->smart_options = NULL;
 	} else if (!is_url(url)
-		|| !prefixcmp(url, "file://")
-		|| !prefixcmp(url, "git://")
-		|| !prefixcmp(url, "ssh://")
-		|| !prefixcmp(url, "git+ssh://")
-		|| !prefixcmp(url, "ssh+git://")) {
+		|| starts_with(url, "file://")
+		|| starts_with(url, "git://")
+		|| starts_with(url, "ssh://")
+		|| starts_with(url, "git+ssh://")
+		|| starts_with(url, "ssh+git://")) {
 		/* These are builtin smart transports. */
 		struct git_transport_data *data = xcalloc(1, sizeof(*data));
 		ret->data = data;
@@ -1297,7 +1289,7 @@ char *transport_anonymize_url(const char *url)
 	size_t anon_len, prefix_len = 0;
 
 	anon_part = strchr(url, '@');
-	if (is_local(url) || !anon_part)
+	if (url_is_local_not_ssh(url) || !anon_part)
 		goto literal_copy;
 
 	anon_len = strlen(++anon_part);

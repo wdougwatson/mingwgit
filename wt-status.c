@@ -17,6 +17,9 @@
 #include "strbuf.h"
 #include "utf8.h"
 
+static char cut_line[] =
+"------------------------ >8 ------------------------\n";
+
 static char default_wt_status_colors[][COLOR_MAXLEN] = {
 	GIT_COLOR_NORMAL, /* WT_STATUS_HEADER */
 	GIT_COLOR_GREEN,  /* WT_STATUS_UPDATED */
@@ -793,6 +796,18 @@ conclude:
 	status_printf_ln(s, GIT_COLOR_NORMAL, "");
 }
 
+void wt_status_truncate_message_at_cut_line(struct strbuf *buf)
+{
+	const char *p;
+	struct strbuf pattern = STRBUF_INIT;
+
+	strbuf_addf(&pattern, "%c %s", comment_line_char, cut_line);
+	p = strstr(buf->buf, pattern.buf);
+	if (p && (p == buf->buf || p[-1] == '\n'))
+		strbuf_setlen(buf, p - buf->buf);
+	strbuf_release(&pattern);
+}
+
 static void wt_status_print_verbose(struct wt_status *s)
 {
 	struct rev_info rev;
@@ -813,10 +828,20 @@ static void wt_status_print_verbose(struct wt_status *s)
 	 * If we're not going to stdout, then we definitely don't
 	 * want color, since we are going to the commit message
 	 * file (and even the "auto" setting won't work, since it
-	 * will have checked isatty on stdout).
+	 * will have checked isatty on stdout). But we then do want
+	 * to insert the scissor line here to reliably remove the
+	 * diff before committing.
 	 */
-	if (s->fp != stdout)
+	if (s->fp != stdout) {
+		const char *explanation = _("Do not touch the line above.\nEverything below will be removed.");
+		struct strbuf buf = STRBUF_INIT;
+
 		rev.diffopt.use_color = 0;
+		fprintf(s->fp, "%c %s", comment_line_char, cut_line);
+		strbuf_add_commented_lines(&buf, explanation, strlen(explanation));
+		fputs(buf.buf, s->fp);
+		strbuf_release(&buf);
+	}
 	run_diff_index(&rev, 1);
 }
 
@@ -829,7 +854,7 @@ static void wt_status_print_tracking(struct wt_status *s)
 	int i;
 
 	assert(s->branch && !s->is_initial);
-	if (prefixcmp(s->branch, "refs/heads/"))
+	if (!starts_with(s->branch, "refs/heads/"))
 		return;
 	branch = branch_get(s->branch + 11);
 	if (!format_tracking_info(branch, &sb))
@@ -1088,9 +1113,9 @@ static char *read_and_strip_branch(const char *path)
 		strbuf_setlen(&sb, sb.len - 1);
 	if (!sb.len)
 		goto got_nothing;
-	if (!prefixcmp(sb.buf, "refs/heads/"))
+	if (starts_with(sb.buf, "refs/heads/"))
 		strbuf_remove(&sb,0, strlen("refs/heads/"));
-	else if (!prefixcmp(sb.buf, "refs/"))
+	else if (starts_with(sb.buf, "refs/"))
 		;
 	else if (!get_sha1_hex(sb.buf, sha1)) {
 		const char *abbrev;
@@ -1120,7 +1145,7 @@ static int grab_1st_switch(unsigned char *osha1, unsigned char *nsha1,
 	struct grab_1st_switch_cbdata *cb = cb_data;
 	const char *target = NULL, *end;
 
-	if (prefixcmp(message, "checkout: moving from "))
+	if (!starts_with(message, "checkout: moving from "))
 		return 0;
 	message += strlen("checkout: moving from ");
 	target = strstr(message, " to ");
@@ -1155,9 +1180,9 @@ static void wt_status_get_detached_from(struct wt_status_state *state)
 	     ((commit = lookup_commit_reference_gently(sha1, 1)) != NULL &&
 	      !hashcmp(cb.nsha1, commit->object.sha1)))) {
 		int ofs;
-		if (!prefixcmp(ref, "refs/tags/"))
+		if (starts_with(ref, "refs/tags/"))
 			ofs = strlen("refs/tags/");
-		else if (!prefixcmp(ref, "refs/remotes/"))
+		else if (starts_with(ref, "refs/remotes/"))
 			ofs = strlen("refs/remotes/");
 		else
 			ofs = 0;
@@ -1246,7 +1271,7 @@ void wt_status_print(struct wt_status *s)
 	if (s->branch) {
 		const char *on_what = _("On branch ");
 		const char *branch_name = s->branch;
-		if (!prefixcmp(branch_name, "refs/heads/"))
+		if (starts_with(branch_name, "refs/heads/"))
 			branch_name += 11;
 		else if (!strcmp(branch_name, "HEAD")) {
 			branch_status_color = color(WT_STATUS_NOBRANCH, s);
@@ -1447,7 +1472,7 @@ static void wt_shortstatus_print_tracking(struct wt_status *s)
 		return;
 	branch_name = s->branch;
 
-	if (!prefixcmp(branch_name, "refs/heads/"))
+	if (starts_with(branch_name, "refs/heads/"))
 		branch_name += 11;
 	else if (!strcmp(branch_name, "HEAD")) {
 		branch_name = _("HEAD (no branch)");
