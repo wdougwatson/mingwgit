@@ -1771,9 +1771,20 @@ $(SCRIPT_LIB) : % : %.sh GIT-SCRIPT-DEFINES
 	$(QUIET_GEN)$(cmd_munge_script) && \
 	mv $@+ $@
 
+VERSION_MAJOR := $(wordlist 1,1,$(subst -, ,$(subst ., ,$(GIT_VERSION))))
+VERSION_MINOR := $(wordlist 2,2,$(subst -, ,$(subst ., ,$(GIT_VERSION))))
+VERSION_PATCH := $(wordlist 3,3,$(subst -, ,$(subst ., ,$(GIT_VERSION))))
+VERSION_RC := $(subst rc,,$(VERSION_PATCH))
+ifneq "$(VERSION_PATCH)" "$(VERSION_RC)"
+	# release candidate is previous version with patch number 90+
+	VERSION_MINOR := $(shell expr $(VERSION_MINOR) - 1)
+	VERSION_PATCH := $(shell expr 90 + $(VERSION_RC))
+endif
 git.res: git.rc GIT-VERSION-FILE
 	$(QUIET_RC)$(RC) \
-	  $(join -DMAJOR= -DMINOR= -DPATCH=, $(wordlist 1,3,$(subst -, ,$(subst ., ,$(GIT_VERSION))))) \
+	  -DMAJOR=$(VERSION_MAJOR) \
+	  -DMINOR=$(VERSION_MINOR) \
+	  -DPATCH=$(VERSION_PATCH) \
 	  -DGIT_VERSION="\\\"$(GIT_VERSION)\\\"" $< -o $@
 
 ifndef NO_PERL
