@@ -540,11 +540,14 @@ int cmd_add(int argc, const char **argv, const char *prefix)
 			       PATHSPEC_FROMTOP |
 			       PATHSPEC_LITERAL |
 			       PATHSPEC_GLOB |
-			       PATHSPEC_ICASE);
+			       PATHSPEC_ICASE |
+			       PATHSPEC_EXCLUDE);
 
 		for (i = 0; i < pathspec.nr; i++) {
 			const char *path = pathspec.items[i].match;
-			if (!seen[i] &&
+			if (pathspec.items[i].magic & PATHSPEC_EXCLUDE)
+				continue;
+			if (!seen[i] && path[0] &&
 			    ((pathspec.items[i].magic &
 			      (PATHSPEC_GLOB | PATHSPEC_ICASE)) ||
 			     !file_exists(path))) {

@@ -36,7 +36,7 @@ static int prune = -1; /* unspecified */
 
 static int all, append, dry_run, force, keep, multiple, update_head_ok, verbosity;
 static int progress = -1, recurse_submodules = RECURSE_SUBMODULES_DEFAULT;
-static int tags = TAGS_DEFAULT, unshallow;
+static int tags = TAGS_DEFAULT, unshallow, update_shallow;
 static const char *depth;
 static const char *upload_pack;
 static struct strbuf default_rla = STRBUF_INIT;
@@ -44,6 +44,7 @@ static struct transport *gtransport;
 static struct transport *gsecondary;
 static const char *submodule_prefix = "";
 static const char *recurse_submodules_default;
+static int shown_url = 0;
 
 static int option_parse_recurse_submodules(const struct option *opt,
 				   const char *arg, int unset)
@@ -104,6 +105,8 @@ static struct option builtin_fetch_options[] = {
 	{ OPTION_STRING, 0, "recurse-submodules-default",
 		   &recurse_submodules_default, NULL,
 		   N_("default mode for recursion"), PARSE_OPT_HIDDEN },
+	OPT_BOOL(0, "update-shallow", &update_shallow,
+		 N_("accept refs that update .git/shallow")),
 	OPT_END()
 };
 
@@ -523,6 +526,8 @@ static int iterate_ref_map(void *cb_data, unsigned char sha1[20])
 	struct ref **rm = cb_data;
 	struct ref *ref = *rm;
 
+	while (ref && ref->status == REF_STATUS_REJECT_SHALLOW)
+		ref = ref->next;
 	if (!ref)
 		return -1; /* end of the list */
 	*rm = ref->next;
@@ -535,7 +540,7 @@ static int store_updated_refs(const char *raw_url, const char *remote_name,
 {
 	FILE *fp;
 	struct commit *commit;
-	int url_len, i, shown_url = 0, rc = 0;
+	int url_len, i, rc = 0;
 	struct strbuf note = STRBUF_INIT;
 	const char *what, *kind;
 	struct ref *rm;
@@ -568,6 +573,13 @@ static int store_updated_refs(const char *raw_url, const char *remote_name,
 		for (rm = ref_map; rm; rm = rm->next) {
 			struct ref *ref = NULL;
 			const char *merge_status_marker = "";
+
+			if (rm->status == REF_STATUS_REJECT_SHALLOW) {
+				if (want_status == FETCH_HEAD_MERGE)
+					warning(_("reject %s because shallow roots are not allowed to be updated"),
+						rm->peer_ref ? rm->peer_ref->name : rm->name);
+				continue;
+			}
 
 			commit = lookup_commit_reference_gently(rm->old_sha1, 1);
 			if (!commit)
@@ -708,17 +720,36 @@ static int fetch_refs(struct transport *transport, struct ref *ref_map)
 	return ret;
 }
 
-static int prune_refs(struct refspec *refs, int ref_count, struct ref *ref_map)
+static int prune_refs(struct refspec *refs, int ref_count, struct ref *ref_map,
+		const char *raw_url)
 {
-	int result = 0;
+	int url_len, i, result = 0;
 	struct ref *ref, *stale_refs = get_stale_heads(refs, ref_count, ref_map);
+	char *url;
 	const char *dangling_msg = dry_run
 		? _("   (%s will become dangling)")
 		: _("   (%s has become dangling)");
 
+	if (raw_url)
+		url = transport_anonymize_url(raw_url);
+	else
+		url = xstrdup("foreign");
+
+	url_len = strlen(url);
+	for (i = url_len - 1; url[i] == '/' && 0 <= i; i--)
+		;
+
+	url_len = i + 1;
+	if (4 < i && !strncmp(".git", url + i - 3, 4))
+		url_len = i - 3;
+
 	for (ref = stale_refs; ref; ref = ref->next) {
 		if (!dry_run)
 			result |= delete_ref(ref->name, NULL, 0);
+		if (verbosity >= 0 && !shown_url) {
+			fprintf(stderr, _("From %.*s\n"), url_len, url);
+			shown_url = 1;
+		}
 		if (verbosity >= 0) {
 			fprintf(stderr, " x %-*s %-*s -> %s\n",
 				TRANSPORT_SUMMARY(_("[deleted]")),
@@ -726,6 +757,7 @@ static int prune_refs(struct refspec *refs, int ref_count, struct ref *ref_map)
 			warn_dangling_symref(stderr, dangling_msg, ref->name);
 		}
 	}
+	free(url);
 	free_refs(stale_refs);
 	return result;
 }
@@ -777,6 +809,8 @@ static struct transport *prepare_transport(struct remote *remote)
 		set_option(transport, TRANS_OPT_KEEP, "yes");
 	if (depth)
 		set_option(transport, TRANS_OPT_DEPTH, depth);
+	if (update_shallow)
+		set_option(transport, TRANS_OPT_UPDATE_SHALLOW, "yes");
 	return transport;
 }
 
@@ -842,11 +876,6 @@ static int do_fetch(struct transport *transport,
 
 	if (tags == TAGS_DEFAULT && autotags)
 		transport_set_option(transport, TRANS_OPT_FOLLOWTAGS, "1");
-	if (fetch_refs(transport, ref_map)) {
-		free_refs(ref_map);
-		retcode = 1;
-		goto cleanup;
-	}
 	if (prune) {
 		/*
 		 * We only prune based on refspecs specified
@@ -854,12 +883,18 @@ static int do_fetch(struct transport *transport,
 		 * don't care whether --tags was specified.
 		 */
 		if (ref_count) {
-			prune_refs(refs, ref_count, ref_map);
+			prune_refs(refs, ref_count, ref_map, transport->url);
 		} else {
 			prune_refs(transport->remote->fetch,
 				   transport->remote->fetch_refspec_nr,
-				   ref_map);
+				   ref_map,
+				   transport->url);
 		}
+	}
+	if (fetch_refs(transport, ref_map)) {
+		free_refs(ref_map);
+		retcode = 1;
+		goto cleanup;
 	}
 	free_refs(ref_map);
 

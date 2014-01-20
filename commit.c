@@ -196,19 +196,19 @@ bad_graft_data:
 static int read_graft_file(const char *graft_file)
 {
 	FILE *fp = fopen(graft_file, "r");
-	char buf[1024];
+	struct strbuf buf = STRBUF_INIT;
 	if (!fp)
 		return -1;
-	while (fgets(buf, sizeof(buf), fp)) {
+	while (!strbuf_getwholeline(&buf, fp, '\n')) {
 		/* The format is just "Commit Parent1 Parent2 ...\n" */
-		int len = strlen(buf);
-		struct commit_graft *graft = read_graft_line(buf, len);
+		struct commit_graft *graft = read_graft_line(buf.buf, buf.len);
 		if (!graft)
 			continue;
 		if (register_commit_graft(graft, 1))
-			error("duplicate graft data: %s", buf);
+			error("duplicate graft data: %s", buf.buf);
 	}
 	fclose(fp);
+	strbuf_release(&buf);
 	return 0;
 }
 
@@ -841,26 +841,26 @@ static struct commit_list *merge_bases_many(struct commit *one, int n, struct co
 struct commit_list *get_octopus_merge_bases(struct commit_list *in)
 {
 	struct commit_list *i, *j, *k, *ret = NULL;
-	struct commit_list **pptr = &ret;
 
-	for (i = in; i; i = i->next) {
-		if (!ret)
-			pptr = &commit_list_insert(i->item, pptr)->next;
-		else {
-			struct commit_list *new = NULL, *end = NULL;
+	if (!in)
+		return ret;
 
-			for (j = ret; j; j = j->next) {
-				struct commit_list *bases;
-				bases = get_merge_bases(i->item, j->item, 1);
-				if (!new)
-					new = bases;
-				else
-					end->next = bases;
-				for (k = bases; k; k = k->next)
-					end = k;
-			}
-			ret = new;
+	commit_list_insert(in->item, &ret);
+
+	for (i = in->next; i; i = i->next) {
+		struct commit_list *new = NULL, *end = NULL;
+
+		for (j = ret; j; j = j->next) {
+			struct commit_list *bases;
+			bases = get_merge_bases(i->item, j->item, 1);
+			if (!new)
+				new = bases;
+			else
+				end->next = bases;
+			for (k = bases; k; k = k->next)
+				end = k;
 		}
+		ret = new;
 	}
 	return ret;
 }
@@ -1356,7 +1356,7 @@ void free_commit_extra_headers(struct commit_extra_header *extra)
 	}
 }
 
-int commit_tree(const struct strbuf *msg, unsigned char *tree,
+int commit_tree(const struct strbuf *msg, const unsigned char *tree,
 		struct commit_list *parents, unsigned char *ret,
 		const char *author, const char *sign_commit)
 {
@@ -1485,7 +1485,7 @@ static const char commit_utf8_warn[] =
 "You may want to amend it after fixing the message, or set the config\n"
 "variable i18n.commitencoding to the encoding your project uses.\n";
 
-int commit_tree_extended(const struct strbuf *msg, unsigned char *tree,
+int commit_tree_extended(const struct strbuf *msg, const unsigned char *tree,
 			 struct commit_list *parents, unsigned char *ret,
 			 const char *author, const char *sign_commit,
 			 struct commit_extra_header *extra)
