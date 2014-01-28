@@ -543,7 +543,7 @@ static int match_entry(const struct pathspec_item *item,
 	if (matchlen > pathlen) {
 		if (match[pathlen] != '/')
 			return 0;
-		if (!S_ISDIR(entry->mode))
+		if (!S_ISDIR(entry->mode) && !S_ISGITLINK(entry->mode))
 			return 0;
 	}
 
@@ -749,7 +749,7 @@ match_wildcards:
 
 		if (item->nowildcard_len &&
 		    !match_wildcard_base(item, base_str, baselen, &matched))
-			return entry_not_interesting;
+			continue;
 
 		/*
 		 * Concatenate base and entry->path into one and do

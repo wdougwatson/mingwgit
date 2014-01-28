@@ -1771,20 +1771,9 @@ $(SCRIPT_LIB) : % : %.sh GIT-SCRIPT-DEFINES
 	$(QUIET_GEN)$(cmd_munge_script) && \
 	mv $@+ $@
 
-VERSION_MAJOR := $(wordlist 1,1,$(subst -, ,$(subst ., ,$(GIT_VERSION))))
-VERSION_MINOR := $(wordlist 2,2,$(subst -, ,$(subst ., ,$(GIT_VERSION))))
-VERSION_PATCH := $(wordlist 3,3,$(subst -, ,$(subst ., ,$(GIT_VERSION))))
-VERSION_RC := $(subst rc,,$(VERSION_PATCH))
-ifneq "$(VERSION_PATCH)" "$(VERSION_RC)"
-	# release candidate is previous version with patch number 90+
-	VERSION_MINOR := $(shell expr $(VERSION_MINOR) - 1)
-	VERSION_PATCH := $(shell expr 90 + $(VERSION_RC))
-endif
 git.res: git.rc GIT-VERSION-FILE
 	$(QUIET_RC)$(RC) \
-	  -DMAJOR=$(VERSION_MAJOR) \
-	  -DMINOR=$(VERSION_MINOR) \
-	  -DPATCH=$(VERSION_PATCH) \
+	  $(join -DMAJOR= -DMINOR=, $(wordlist 1,2,$(subst -, ,$(subst ., ,$(GIT_VERSION))))) \
 	  -DGIT_VERSION="\\\"$(GIT_VERSION)\\\"" $< -o $@
 
 ifndef NO_PERL
@@ -2061,10 +2050,10 @@ git-imap-send$X: imap-send.o GIT-LDFLAGS $(GITLIBS)
 	$(QUIET_LINK)$(CC) $(ALL_CFLAGS) -o $@ $(ALL_LDFLAGS) $(filter %.o,$^) \
 		$(LIBS) $(OPENSSL_LINK) $(OPENSSL_LIBSSL) $(LIB_4_CRYPTO)
 
-git-http-fetch$X: revision.o http.o http-walker.o http-fetch.o GIT-LDFLAGS $(GITLIBS)
+git-http-fetch$X: http.o http-walker.o http-fetch.o GIT-LDFLAGS $(GITLIBS)
 	$(QUIET_LINK)$(CC) $(ALL_CFLAGS) -o $@ $(ALL_LDFLAGS) $(filter %.o,$^) \
 		$(LIBS) $(CURL_LIBCURL)
-git-http-push$X: revision.o http.o http-push.o GIT-LDFLAGS $(GITLIBS)
+git-http-push$X: http.o http-push.o GIT-LDFLAGS $(GITLIBS)
 	$(QUIET_LINK)$(CC) $(ALL_CFLAGS) -o $@ $(ALL_LDFLAGS) $(filter %.o,$^) \
 		$(LIBS) $(CURL_LIBCURL) $(EXPAT_LIBEXPAT)
 
