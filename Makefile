@@ -555,6 +555,7 @@ TEST_PROGRAMS_NEED_X += test-date
 TEST_PROGRAMS_NEED_X += test-delta
 TEST_PROGRAMS_NEED_X += test-dump-cache-tree
 TEST_PROGRAMS_NEED_X += test-genrandom
+TEST_PROGRAMS_NEED_X += test-hashmap
 TEST_PROGRAMS_NEED_X += test-index-version
 TEST_PROGRAMS_NEED_X += test-line-buffer
 TEST_PROGRAMS_NEED_X += test-match-trees
@@ -663,6 +664,8 @@ LIB_H += diff.h
 LIB_H += diffcore.h
 LIB_H += dir.h
 LIB_H += exec_cmd.h
+LIB_H += ewah/ewok.h
+LIB_H += ewah/ewok_rlw.h
 LIB_H += fetch-pack.h
 LIB_H += fmt-merge-msg.h
 LIB_H += fsck.h
@@ -671,7 +674,7 @@ LIB_H += git-compat-util.h
 LIB_H += gpg-interface.h
 LIB_H += graph.h
 LIB_H += grep.h
-LIB_H += hash.h
+LIB_H += hashmap.h
 LIB_H += help.h
 LIB_H += http.h
 LIB_H += kwset.h
@@ -690,8 +693,10 @@ LIB_H += notes-merge.h
 LIB_H += notes-utils.h
 LIB_H += notes.h
 LIB_H += object.h
+LIB_H += pack-objects.h
 LIB_H += pack-revindex.h
 LIB_H += pack.h
+LIB_H += pack-bitmap.h
 LIB_H += parse-options.h
 LIB_H += patch-ids.h
 LIB_H += pathspec.h
@@ -795,6 +800,10 @@ LIB_OBJS += dir.o
 LIB_OBJS += editor.o
 LIB_OBJS += entry.o
 LIB_OBJS += environment.o
+LIB_OBJS += ewah/bitmap.o
+LIB_OBJS += ewah/ewah_bitmap.o
+LIB_OBJS += ewah/ewah_io.o
+LIB_OBJS += ewah/ewah_rlw.o
 LIB_OBJS += exec_cmd.o
 LIB_OBJS += fetch-pack.o
 LIB_OBJS += fsck.o
@@ -802,7 +811,7 @@ LIB_OBJS += gettext.o
 LIB_OBJS += gpg-interface.o
 LIB_OBJS += graph.o
 LIB_OBJS += grep.o
-LIB_OBJS += hash.o
+LIB_OBJS += hashmap.o
 LIB_OBJS += help.o
 LIB_OBJS += hex.o
 LIB_OBJS += ident.o
@@ -826,7 +835,10 @@ LIB_OBJS += notes-cache.o
 LIB_OBJS += notes-merge.o
 LIB_OBJS += notes-utils.o
 LIB_OBJS += object.o
+LIB_OBJS += pack-bitmap.o
+LIB_OBJS += pack-bitmap-write.o
 LIB_OBJS += pack-check.o
+LIB_OBJS += pack-objects.o
 LIB_OBJS += pack-revindex.o
 LIB_OBJS += pack-write.o
 LIB_OBJS += pager.o
@@ -2479,8 +2491,9 @@ profile-clean:
 	$(RM) $(addsuffix *.gcno,$(addprefix $(PROFILE_DIR)/, $(object_dirs)))
 
 clean: profile-clean coverage-clean
-	$(RM) *.o *.res block-sha1/*.o ppc/*.o compat/*.o compat/*/*.o xdiff/*.o vcs-svn/*.o \
-		builtin/*.o $(LIB_FILE) $(XDIFF_LIB) $(VCSSVN_LIB)
+	$(RM) *.o *.res block-sha1/*.o ppc/*.o compat/*.o compat/*/*.o
+	$(RM) xdiff/*.o vcs-svn/*.o ewah/*.o builtin/*.o
+	$(RM) $(LIB_FILE) $(XDIFF_LIB) $(VCSSVN_LIB)
 	$(RM) $(ALL_PROGRAMS) $(SCRIPT_LIB) $(BUILT_INS) git$X
 	$(RM) $(TEST_PROGRAMS) $(NO_INSTALL)
 	$(RM) -r bin-wrappers $(dep_dirs)

@@ -3,7 +3,7 @@
 
 #include "git-compat-util.h"
 #include "strbuf.h"
-#include "hash.h"
+#include "hashmap.h"
 #include "advice.h"
 #include "gettext.h"
 #include "convert.h"
@@ -130,12 +130,12 @@ struct stat_data {
 };
 
 struct cache_entry {
+	struct hashmap_entry ent;
 	struct stat_data ce_stat_data;
 	unsigned int ce_mode;
 	unsigned int ce_flags;
 	unsigned int ce_namelen;
 	unsigned char sha1[20];
-	struct cache_entry *next;
 	char name[FLEX_ARRAY]; /* more */
 };
 
@@ -159,7 +159,6 @@ struct cache_entry {
 #define CE_ADDED             (1 << 19)
 
 #define CE_HASHED            (1 << 20)
-#define CE_UNHASHED          (1 << 21)
 #define CE_WT_REMOVE         (1 << 22) /* remove in work directory */
 #define CE_CONFLICTED        (1 << 23)
 
@@ -195,17 +194,18 @@ struct pathspec;
  * Copy the sha1 and stat state of a cache entry from one to
  * another. But we never change the name, or the hash state!
  */
-#define CE_STATE_MASK (CE_HASHED | CE_UNHASHED)
 static inline void copy_cache_entry(struct cache_entry *dst,
 				    const struct cache_entry *src)
 {
-	unsigned int state = dst->ce_flags & CE_STATE_MASK;
+	unsigned int state = dst->ce_flags & CE_HASHED;
 
 	/* Don't copy hash chain and name */
-	memcpy(dst, src, offsetof(struct cache_entry, next));
+	memcpy(&dst->ce_stat_data, &src->ce_stat_data,
+			offsetof(struct cache_entry, name) -
+			offsetof(struct cache_entry, ce_stat_data));
 
 	/* Restore the hash state */
-	dst->ce_flags = (dst->ce_flags & ~CE_STATE_MASK) | state;
+	dst->ce_flags = (dst->ce_flags & ~CE_HASHED) | state;
 }
 
 static inline unsigned create_ce_flags(unsigned stage)
@@ -277,8 +277,8 @@ struct index_state {
 	struct cache_time timestamp;
 	unsigned name_hash_initialized : 1,
 		 initialized : 1;
-	struct hash_table name_hash;
-	struct hash_table dir_hash;
+	struct hashmap name_hash;
+	struct hashmap dir_hash;
 };
 
 extern struct index_state the_index;
@@ -316,7 +316,6 @@ extern void free_name_hash(struct index_state *istate);
 #define ce_modified(ce, st, options) ie_modified(&the_index, (ce), (st), (options))
 #define cache_dir_exists(name, namelen) index_dir_exists(&the_index, (name), (namelen))
 #define cache_file_exists(name, namelen, igncase) index_file_exists(&the_index, (name), (namelen), (igncase))
-#define cache_name_exists(name, namelen, igncase) index_name_exists(&the_index, (name), (namelen), (igncase))
 #define cache_name_is_other(name, namelen) index_name_is_other(&the_index, (name), (namelen))
 #define resolve_undo_clear() resolve_undo_clear_index(&the_index)
 #define unmerge_cache_entry_at(at) unmerge_index_entry_at(&the_index, at)
@@ -467,7 +466,6 @@ extern int unmerged_index(const struct index_state *);
 extern int verify_path(const char *path);
 extern struct cache_entry *index_dir_exists(struct index_state *istate, const char *name, int namelen);
 extern struct cache_entry *index_file_exists(struct index_state *istate, const char *name, int namelen, int igncase);
-extern struct cache_entry *index_name_exists(struct index_state *istate, const char *name, int namelen, int igncase);
 extern int index_name_pos(const struct index_state *, const char *name, int namelen);
 #define ADD_CACHE_OK_TO_ADD 1		/* Ok to add */
 #define ADD_CACHE_OK_TO_REPLACE 2	/* Ok to replace file/directory */
@@ -487,8 +485,9 @@ extern int remove_file_from_index(struct index_state *, const char *path);
 #define ADD_CACHE_IMPLICIT_DOT 32	/* internal to "git add -u/-A" */
 extern int add_to_index(struct index_state *, const char *path, struct stat *, int flags);
 extern int add_file_to_index(struct index_state *, const char *path, int flags);
-extern struct cache_entry *make_cache_entry(unsigned int mode, const unsigned char *sha1, const char *path, int stage, int refresh);
+extern struct cache_entry *make_cache_entry(unsigned int mode, const unsigned char *sha1, const char *path, int stage, unsigned int refresh_options);
 extern int ce_same_name(const struct cache_entry *a, const struct cache_entry *b);
+extern void set_object_name_for_intent_to_add_entry(struct cache_entry *ce);
 extern int index_name_is_other(const struct index_state *, const char *, int);
 extern void *read_blob_data_from_index(struct index_state *, const char *, unsigned long *);
 
@@ -498,10 +497,12 @@ extern void *read_blob_data_from_index(struct index_state *, const char *, unsig
 #define CE_MATCH_RACY_IS_DIRTY		02
 /* do stat comparison even if CE_SKIP_WORKTREE is true */
 #define CE_MATCH_IGNORE_SKIP_WORKTREE	04
+/* ignore non-existent files during stat update  */
+#define CE_MATCH_IGNORE_MISSING		0x08
+/* enable stat refresh */
+#define CE_MATCH_REFRESH		0x10
 extern int ie_match_stat(const struct index_state *, const struct cache_entry *, struct stat *, unsigned int);
 extern int ie_modified(const struct index_state *, const struct cache_entry *, struct stat *, unsigned int);
-
-extern int ce_path_match(const struct cache_entry *ce, const struct pathspec *pathspec);
 
 #define HASH_WRITE_OBJECT 1
 #define HASH_FORMAT_CHECK 2
@@ -808,6 +809,7 @@ extern int hash_sha1_file(const void *buf, unsigned long len, const char *type, 
 extern int write_sha1_file(const void *buf, unsigned long len, const char *type, unsigned char *return_sha1);
 extern int pretend_sha1_file(void *, unsigned long, enum object_type, unsigned char *);
 extern int force_object_loose(const unsigned char *sha1, time_t mtime);
+extern int git_open_noatime(const char *name);
 extern void *map_sha1_file(const unsigned char *sha1, unsigned long *size);
 extern int unpack_sha1_header(git_zstream *stream, unsigned char *map, unsigned long mapsize, void *buffer, unsigned long bufsiz);
 extern int parse_sha1_header(const char *hdr, unsigned long *sizep);
