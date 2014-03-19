@@ -101,14 +101,6 @@ all::
 #
 # Define NO_MKSTEMPS if you don't have mkstemps in the C library.
 #
-# Define NO_FNMATCH if you don't have fnmatch in the C library.
-#
-# Define NO_FNMATCH_CASEFOLD if your fnmatch function doesn't have the
-# FNM_CASEFOLD GNU extension.
-#
-# Define NO_WILDMATCH if you do not want to use Git's wildmatch
-# implementation as fnmatch
-#
 # Define NO_GECOS_IN_PWENT if you don't have pw_gecos in struct passwd
 # in the C library.
 #
@@ -342,6 +334,10 @@ all::
 # Define DEFAULT_HELP_FORMAT to "man", "info" or "html"
 # (defaults to "man") if you want to have a different default when
 # "git help" is called without a parameter specifying the format.
+#
+# Define TEST_GIT_INDEX_VERSION to 2, 3 or 4 to run the test suite
+# with a different indexfile format version.  If it isn't set the index
+# file format used is index-v[23].
 
 GIT-VERSION-FILE: FORCE
 	@$(SHELL_PATH) ./GIT-VERSION-GEN
@@ -1283,20 +1279,6 @@ endif
 ifdef NO_STRTOULL
 	COMPAT_CFLAGS += -DNO_STRTOULL
 endif
-ifdef NO_FNMATCH
-	COMPAT_CFLAGS += -Icompat/fnmatch
-	COMPAT_CFLAGS += -DNO_FNMATCH
-	COMPAT_OBJS += compat/fnmatch/fnmatch.o
-else
-ifdef NO_FNMATCH_CASEFOLD
-	COMPAT_CFLAGS += -Icompat/fnmatch
-	COMPAT_CFLAGS += -DNO_FNMATCH_CASEFOLD
-	COMPAT_OBJS += compat/fnmatch/fnmatch.o
-endif
-endif
-ifndef NO_WILDMATCH
-	COMPAT_CFLAGS += -DUSE_WILDMATCH
-endif
 ifdef NO_SETENV
 	COMPAT_CFLAGS += -DNO_SETENV
 	COMPAT_OBJS += compat/setenv.o
@@ -2233,6 +2215,9 @@ ifdef GIT_PERF_LARGE_REPO
 endif
 ifdef GIT_PERF_MAKE_OPTS
 	@echo GIT_PERF_MAKE_OPTS=\''$(subst ','\'',$(subst ','\'',$(GIT_PERF_MAKE_OPTS)))'\' >>$@
+endif
+ifdef TEST_GIT_INDEX_VERSION
+	@echo TEST_GIT_INDEX_VERSION=\''$(subst ','\'',$(subst ','\'',$(TEST_GIT_INDEX_VERSION)))'\' >>$@
 endif
 
 ### Detect Python interpreter path changes

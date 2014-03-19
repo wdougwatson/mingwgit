@@ -42,7 +42,7 @@ static int match_pattern(const char **patterns, const char *ref)
 	if (!*patterns)
 		return 1;
 	for (; *patterns; patterns++)
-		if (!fnmatch(*patterns, ref, 0))
+		if (!wildmatch(*patterns, ref, 0, NULL))
 			return 1;
 	return 0;
 }
@@ -468,6 +468,12 @@ int cmd_tag(int argc, const char **argv, const char *prefix)
 			OPTION_CALLBACK, 0, "contains", &with_commit, N_("commit"),
 			N_("print only tags that contain the commit"),
 			PARSE_OPT_LASTARG_DEFAULT,
+			parse_opt_with_commit, (intptr_t)"HEAD",
+		},
+		{
+			OPTION_CALLBACK, 0, "with", &with_commit, N_("commit"),
+			N_("print only tags that contain the commit"),
+			PARSE_OPT_HIDDEN | PARSE_OPT_LASTARG_DEFAULT,
 			parse_opt_with_commit, (intptr_t)"HEAD",
 		},
 		{

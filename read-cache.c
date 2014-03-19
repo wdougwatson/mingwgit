@@ -990,11 +990,7 @@ int add_index_entry(struct index_state *istate, struct cache_entry *ce, int opti
 	}
 
 	/* Make sure the array is big enough .. */
-	if (istate->cache_nr == istate->cache_alloc) {
-		istate->cache_alloc = alloc_nr(istate->cache_alloc);
-		istate->cache = xrealloc(istate->cache,
-					istate->cache_alloc * sizeof(*istate->cache));
-	}
+	ALLOC_GROW(istate->cache, istate->cache_nr + 1, istate->cache_alloc);
 
 	/* Add it in.. */
 	istate->cache_nr++;
@@ -1219,6 +1215,42 @@ static struct cache_entry *refresh_cache_entry(struct cache_entry *ce,
  *****************************************************************/
 
 #define INDEX_FORMAT_DEFAULT 3
+
+static int index_format_config(const char *var, const char *value, void *cb)
+{
+	unsigned int *version = cb;
+	if (!strcmp(var, "index.version")) {
+		*version = git_config_int(var, value);
+		return 0;
+	}
+	return 1;
+}
+
+static unsigned int get_index_format_default(void)
+{
+	char *envversion = getenv("GIT_INDEX_VERSION");
+	char *endp;
+	unsigned int version = INDEX_FORMAT_DEFAULT;
+
+	if (!envversion) {
+		git_config(index_format_config, &version);
+		if (version < INDEX_FORMAT_LB || INDEX_FORMAT_UB < version) {
+			warning(_("index.version set, but the value is invalid.\n"
+				  "Using version %i"), INDEX_FORMAT_DEFAULT);
+			return INDEX_FORMAT_DEFAULT;
+		}
+		return version;
+	}
+
+	version = strtoul(envversion, &endp, 10);
+	if (*endp ||
+	    version < INDEX_FORMAT_LB || INDEX_FORMAT_UB < version) {
+		warning(_("GIT_INDEX_VERSION set, but the value is invalid.\n"
+			  "Using version %i"), INDEX_FORMAT_DEFAULT);
+		version = INDEX_FORMAT_DEFAULT;
+	}
+	return version;
+}
 
 /*
  * dev/ino/uid/gid/size are also just tracked to the low 32 bits
@@ -1776,7 +1808,7 @@ int write_index(struct index_state *istate, int newfd)
 	}
 
 	if (!istate->version)
-		istate->version = INDEX_FORMAT_DEFAULT;
+		istate->version = get_index_format_default();
 
 	/* demote version 3 to version 2 when the latter suffices */
 	if (istate->version == 3 || istate->version == 2)
