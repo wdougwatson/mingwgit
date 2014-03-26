@@ -39,14 +39,25 @@ The "-q" option to "git diff-files", which does *NOT* mean "quiet",
 has been removed (it told Git to ignore deletion, which you can do
 with "git diff-files --diff-filter=d").
 
+"git request-pull" lost a few "heuristics" that often led to mistakes.
+
 
 Updates since v1.9 series
 -------------------------
 
-Foreign interfaces, subsystems and ports.
-
-
 UI, Workflows & Features
+
+ * "git commit --cleanup=<mode>" learned a new mode, scissors.
+
+ * "git tag --list" output can be sorted using "version sort" with
+   "--sort=version:refname".
+
+ * Discard the accumulated "heuristics" to guess from which branch the
+   result wants to be pulled from and make sure what the end user
+   specified is not second-guessed by "git request-pull", to avoid
+   mistakes.  When you pushed out your 'master' branch to your public
+   repository as 'for-linus', use the new "master:for-linus" syntax to
+   denote the branch to be pulled.
 
  * "git grep" learned to behave in a way similar to native grep when
    "-h" (no header) and "-c" (count) options are given.
@@ -143,6 +154,48 @@ Fixes since v1.9 series
 Unless otherwise noted, all the fixes since v1.9 in the maintenance
 track are contained in this release (see the maintenance releases'
 notes for details).
+
+ * "git mv" that moves a submodule forgot to adjust the array that
+   uses to keep track of which submodules were to be moved to update
+   its configuration.
+   (merge fb8a4e8 jk/mv-submodules-fix later to maint).
+
+ * Length limit for the pathname used when removing a path in a deep
+   subdirectory has been removed to avoid buffer overflows.
+   (merge 2f29e0c mh/remove-subtree-long-pathname-fix later to maint).
+
+ * The test helper lib-terminal always run an actual test_expect_*
+   when included, which screwed up with the use of skil-all that may
+   have to be done later.
+   (merge 7e27173 jk/lib-terminal-lazy later to maint).
+
+ * "git index-pack" used a wrong variable to name the keep-file in an
+   error message when the file cannot be written or closed.
+   (merge de983a0 nd/index-pack-error-message later to maint).
+
+ * "rebase -i" produced a broken insn sheet when the title of a commit
+   happened to contain '\n' (or ended with '\c') due to a careless use
+   of 'echo'.
+   (merge cb1aefd us/printf-not-echo later to maint).
+
+ * There were a few instances of 'git-foo' remaining in the
+   documentation that should have been spelled 'git foo'.
+   (merge 3c3e6f5 rr/doc-merge-strategies later to maint).
+
+ * Serving objects from a shallow repository needs to write a
+   new file to hold the temporary shallow boundaries but it was not
+   cleaned when we exit due to die() or a signal.
+   (merge 7839632 jk/shallow-update-fix later to maint).
+
+ * When "git stash pop" stops after failing to apply the stash
+   (e.g. due to conflicting changes), the stash is not dropped. State
+   that explicitly in the output to let the users know.
+   (merge 2d4c993 jc/stash-pop-not-popped later to maint).
+
+ * The labels in "git status" output that describe the nature of
+   conflicts (e.g. "both deleted") were limited to 20 bytes, which was
+   too short for some l10n (e.g. fr).
+   (merge c7cb333 jn/wt-status later to maint).
 
  * "git clean -d pathspec" did not use the given pathspec correctly
    and ended up cleaning too much.
