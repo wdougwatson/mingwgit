@@ -47,6 +47,17 @@ Updates since v1.9 series
 
 UI, Workflows & Features
 
+ * The "rev-parse --parseopt" mechanism used by scripted Porcelains to
+   parse command line options and to give help text learned to take
+   the argv-help (the placeholder string for an option parameter,
+   e.g. "key-id" in "--gpg-sign=<key-id>").
+
+ * The pattern to find where the function begins in C/C++ used in
+   "diff" and "grep -p" have been updated to help C++ source better.
+
+ * "git rebase" learned to interpret a lone "-" as "@{-1}", the
+   branch that we were previously on.
+
  * "git commit --cleanup=<mode>" learned a new mode, scissors.
 
  * "git tag --list" output can be sorted using "version sort" with
@@ -115,11 +126,6 @@ UI, Workflows & Features
    fully for paths the index knows about but the tree-ish the command
    resets to does not (these paths are kept as intend-to-add entries).
 
- * Newly cloned submodule repositories by "git submodule update",
-   when the "checkout" update mode is used, will be on a local
-   branch instead of on a detached HEAD, just like submodules added
-   with "git submodule add".
-
 
 Performance, Internal Implementation, etc.
 
@@ -154,6 +160,35 @@ Fixes since v1.9 series
 Unless otherwise noted, all the fixes since v1.9 in the maintenance
 track are contained in this release (see the maintenance releases'
 notes for details).
+
+ * "git status --porcelain --branch" showed its output with labels
+   "ahead/behind/gone" translated to the user's locale.
+   (merge 7a76c28 mm/status-porcelain-format-i18n-fix later to maint).
+
+
+ * "git repack" died when asked to (re)pack with the reachability
+   bitmap when a bitmap cannot be built; instead, just (re)pack
+   without producing a bitmap in such a case, with a warning.
+   (merge 373c67d jk/pack-bitmap later to maint).
+
+
+ * The progress output while repacking and transferring objects showed
+   an apparent large silence while writing the objects out of existing
+   packfiles, when the reachability bitmap was in use.
+   (merge 78d2214 jk/pack-bitmap-progress later to maint).
+
+
+ * A stray environment variable $prefix could have leaked into and
+   affected the behaviour of the "subtree" script (in contrib/).
+
+
+ * When it is not necessary to edit a commit log message (e.g. "git
+   commit -m" is given a message without specifying "-e"), we used to
+   disable the spawning of the editor by overriding GIT_EDITOR, but
+   this means all the uses of the editor, other than to edit the
+   commit log message, are also affected.
+   (merge b549be0 bp/commit-p-editor later to maint).
+
 
  * "git mv" that moves a submodule forgot to adjust the array that
    uses to keep track of which submodules were to be moved to update
