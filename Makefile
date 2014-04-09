@@ -151,7 +151,7 @@ all::
 #
 # Define NEEDS_LIBINTL_BEFORE_LIBICONV if you need libintl before libiconv.
 #
-# Define NO_INTPTR_T if you don't have intptr_t nor uintptr_t.
+# Define NO_INTPTR_T if you don't have intptr_t or uintptr_t.
 #
 # Define NO_UINTMAX_T if you don't have uintmax_t.
 #
@@ -338,6 +338,9 @@ all::
 # Define TEST_GIT_INDEX_VERSION to 2, 3 or 4 to run the test suite
 # with a different indexfile format version.  If it isn't set the index
 # file format used is index-v[23].
+#
+# Define GMTIME_UNRELIABLE_ERRORS if your gmtime() function does not
+# return NULL when it receives a bogus time_t.
 
 GIT-VERSION-FILE: FORCE
 	@$(SHELL_PATH) ./GIT-VERSION-GEN
@@ -1487,6 +1490,11 @@ endif
 
 ifneq (,$(XDL_FAST_HASH))
 	BASIC_CFLAGS += -DXDL_FAST_HASH
+endif
+
+ifdef GMTIME_UNRELIABLE_ERRORS
+	COMPAT_OBJS += compat/gmtime.o
+	BASIC_CFLAGS += -DGMTIME_UNRELIABLE_ERRORS
 endif
 
 ifeq ($(TCLTK_PATH),)

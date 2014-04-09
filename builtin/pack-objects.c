@@ -1076,7 +1076,7 @@ static int pbase_tree_cache_ix_incr(int ix)
 static struct pbase_tree {
 	struct pbase_tree *next;
 	/* This is a phony "cache" entry; we are not
-	 * going to evict it nor find it through _get()
+	 * going to evict it or find it through _get()
 	 * mechanism -- this is for the toplevel node that
 	 * would almost always change with any commit.
 	 */
@@ -2439,12 +2439,23 @@ static void loosen_unused_packed_objects(struct rev_info *revs)
 	}
 }
 
+/*
+ * This tracks any options which a reader of the pack might
+ * not understand, and which would therefore prevent blind reuse
+ * of what we have on disk.
+ */
+static int pack_options_allow_reuse(void)
+{
+	return allow_ofs_delta;
+}
+
 static int get_object_list_from_bitmap(struct rev_info *revs)
 {
 	if (prepare_bitmap_walk(revs) < 0)
 		return -1;
 
-	if (!reuse_partial_packfile_from_bitmap(
+	if (pack_options_allow_reuse() &&
+	    !reuse_partial_packfile_from_bitmap(
 			&reuse_packfile,
 			&reuse_packfile_objects,
 			&reuse_packfile_offset)) {

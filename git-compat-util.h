@@ -536,7 +536,7 @@ extern FILE *xfdopen(int fd, const char *mode);
 extern int xmkstemp(char *template);
 extern int xmkstemp_mode(char *template, int mode);
 extern int odb_mkstemp(char *template, size_t limit, const char *pattern);
-extern int odb_pack_keep(char *name, size_t namesz, unsigned char *sha1);
+extern int odb_pack_keep(char *name, size_t namesz, const unsigned char *sha1);
 
 static inline size_t xsize_t(off_t len)
 {
@@ -715,5 +715,12 @@ void warn_on_inaccessible(const char *path);
 
 /* Get the passwd entry for the UID of the current process. */
 struct passwd *xgetpwuid_self(void);
+
+#ifdef GMTIME_UNRELIABLE_ERRORS
+struct tm *git_gmtime(const time_t *);
+struct tm *git_gmtime_r(const time_t *, struct tm *);
+#define gmtime git_gmtime
+#define gmtime_r git_gmtime_r
+#endif
 
 #endif
