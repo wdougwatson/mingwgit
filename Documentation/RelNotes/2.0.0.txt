@@ -41,11 +41,19 @@ with "git diff-files --diff-filter=d").
 
 "git request-pull" lost a few "heuristics" that often led to mistakes.
 
+The default prefix for "git svn" has changed in Git 2.0.  For a long
+time, "git svn" created its remote-tracking branches directly under
+refs/remotes, but it now places them under refs/remotes/origin/ unless
+it is told otherwise with its --prefix option.
+
 
 Updates since v1.9 series
 -------------------------
 
 UI, Workflows & Features
+
+ * The "multi-mail" post-receive hook (in contrib/) has been updated
+   to a more recent version from the upstream.
 
  * "git gc --aggressive" learned "--depth" option and
    "gc.aggressiveDepth" configuration variable to allow use of a less
@@ -80,9 +88,9 @@ UI, Workflows & Features
  * "git grep" learned to behave in a way similar to native grep when
    "-h" (no header) and "-c" (count) options are given.
 
- * transport-helper, fast-import and fast-export have been updated to
-   allow the ref mapping and ref deletion in a way similar to the
-   natively supported transports.
+ * "git push" via transport-helper interface (e.g. remote-hg) has
+   been updated to allow ref deletion in a way similar to the natively
+   supported transports.
 
  * The "simple" mode is the default for "git push".
 
@@ -170,6 +178,28 @@ Fixes since v1.9 series
 Unless otherwise noted, all the fixes since v1.9 in the maintenance
 track are contained in this release (see the maintenance releases'
 notes for details).
+
+ * The remote-helepr interface to fast-import/fast-export via the
+   transport-helper has been tightened to avoid leaving the import
+   marks file from a failed/crashed run, as such a file that is out of
+   sync with the reality confuses a later invocation of itself.
+
+ * "git rebase" used a POSIX shell construct FreeBSD /bin/sh does not
+   work well with.
+   (merge 8cd6596 km/avoid-non-function-return-in-rebase later to maint).
+
+ * zsh prompt (in contrib/) leaked unnecessary error messages.
+
+ * bash completion (in contrib/) did not complete the refs and remotes
+   correctly given "git pu<TAB>" when "pu" is aliased to "push".
+
+ * Some more Unicode codepoints defined in Unicode 6.3 as having zero
+   width have been taught to our display column counting logic.
+   (merge d813ab9 tb/unicode-6.3-zero-width later to maint).
+
+ * Some tests used shell constructs that did not work well on FreeBSD
+   (merge ff7a1c6 km/avoid-bs-in-shell-glob later to maint).
+   (merge 00764ca km/avoid-cp-a later to maint).
 
  * "git update-ref --stdin" did not fail a request to create a ref
    when the ref already existed.
