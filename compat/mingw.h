@@ -89,7 +89,7 @@ static inline int readlink(const char *path, char *buf, size_t bufsiz)
 static inline int symlink(const char *oldpath, const char *newpath)
 { errno = ENOSYS; return -1; }
 static inline int fchmod(int fildes, mode_t mode)
-{ errno = ENOSYS; return -1; }
+{ /* do nothing */ return 0; }
 static inline pid_t fork(void)
 { errno = ENOSYS; return -1; }
 static inline unsigned int alarm(unsigned int seconds)
