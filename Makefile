@@ -30,6 +30,8 @@ all::
 # Define LIBPCREDIR=/foo/bar if your libpcre header and library files are in
 # /foo/bar/include and /foo/bar/lib directories.
 #
+# Define HAVE_ALLOCA_H if you have working alloca(3) defined in that header.
+#
 # Define NO_CURL if you do not have libcurl installed.  git-http-fetch and
 # git-http-push are not built, and you cannot use http:// and https://
 # transports (neither smart nor dumb).
@@ -182,9 +184,6 @@ all::
 #
 # Define NO_STRUCT_ITIMERVAL if you don't have struct itimerval
 # This also implies NO_SETITIMER
-#
-# Define NO_THREAD_SAFE_PREAD if your pread() implementation is not
-# thread-safe. (e.g. compat/pread.c or cygwin)
 #
 # Define NO_FAST_WORKING_DIRECTORY if accessing objects in pack files is
 # generally faster on your platform than accessing the working directory.
@@ -730,6 +729,7 @@ LIB_H += transport.h
 LIB_H += tree-walk.h
 LIB_H += tree.h
 LIB_H += unpack-trees.h
+LIB_H += unicode_width.h
 LIB_H += url.h
 LIB_H += urlmatch.h
 LIB_H += userdiff.h
@@ -1111,6 +1111,10 @@ ifdef USE_LIBPCRE
 	EXTLIBS += -lpcre
 endif
 
+ifdef HAVE_ALLOCA_H
+	BASIC_CFLAGS += -DHAVE_ALLOCA_H
+endif
+
 ifdef NO_CURL
 	BASIC_CFLAGS += -DNO_CURL
 	REMOTE_CURL_PRIMARY =
@@ -1339,10 +1343,6 @@ endif
 ifdef NO_PREAD
 	COMPAT_CFLAGS += -DNO_PREAD
 	COMPAT_OBJS += compat/pread.o
-	NO_THREAD_SAFE_PREAD = YesPlease
-endif
-ifdef NO_THREAD_SAFE_PREAD
-	BASIC_CFLAGS += -DNO_THREAD_SAFE_PREAD
 endif
 ifdef NO_FAST_WORKING_DIRECTORY
 	BASIC_CFLAGS += -DNO_FAST_WORKING_DIRECTORY

@@ -330,8 +330,12 @@ extern void warning(const char *err, ...) __attribute__((format (printf, 1, 2)))
  * trying to help gcc, anyway, it's OK; other compilers will fall back to
  * using the function as usual.
  */
-#if defined(__GNUC__) && ! defined(__clang__)
-#define error(...) (error(__VA_ARGS__), -1)
+#if defined(__GNUC__)
+static inline int const_error(void)
+{
+	return -1;
+}
+#define error(...) (error(__VA_ARGS__), const_error())
 #endif
 
 extern void set_die_routine(NORETURN_PTR void (*routine)(const char *err, va_list params));
@@ -521,6 +525,14 @@ extern void release_pack_memory(size_t);
 typedef void (*try_to_free_t)(size_t);
 extern try_to_free_t set_try_to_free_routine(try_to_free_t);
 
+#ifdef HAVE_ALLOCA_H
+# include <alloca.h>
+# define xalloca(size)      (alloca(size))
+# define xalloca_free(p)    do {} while (0)
+#else
+# define xalloca(size)      (xmalloc(size))
+# define xalloca_free(p)    (free(p))
+#endif
 extern char *xstrdup(const char *str);
 extern void *xmalloc(size_t size);
 extern void *xmallocz(size_t size);
@@ -531,6 +543,7 @@ extern void *xcalloc(size_t nmemb, size_t size);
 extern void *xmmap(void *start, size_t length, int prot, int flags, int fd, off_t offset);
 extern ssize_t xread(int fd, void *buf, size_t len);
 extern ssize_t xwrite(int fd, const void *buf, size_t len);
+extern ssize_t xpread(int fd, void *buf, size_t len, off_t offset);
 extern int xdup(int fd);
 extern FILE *xfdopen(int fd, const char *mode);
 extern int xmkstemp(char *template);

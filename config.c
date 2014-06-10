@@ -826,9 +826,16 @@ static int git_default_core_config(const char *var, const char *value)
 	if (!strcmp(var, "core.commentchar")) {
 		const char *comment;
 		int ret = git_config_string(&comment, var, value);
-		if (!ret)
+		if (ret)
+			return ret;
+		else if (!strcasecmp(comment, "auto"))
+			auto_comment_line_char = 1;
+		else if (comment[0] && !comment[1]) {
 			comment_line_char = comment[0];
-		return ret;
+			auto_comment_line_char = 0;
+		} else
+			return error("core.commentChar should only be one character");
+		return 0;
 	}
 
 	if (!strcmp(var, "core.askpass"))
@@ -1636,6 +1643,13 @@ int git_config_set_multivar_in_file(const char *config_filename,
 			MAP_PRIVATE, in_fd, 0);
 		close(in_fd);
 
+		if (fchmod(fd, st.st_mode & 07777) < 0) {
+			error("fchmod on %s failed: %s",
+				lock->filename, strerror(errno));
+			ret = CONFIG_NO_WRITE;
+			goto out_free;
+		}
+
 		if (store.seen == 0)
 			store.seen = 1;
 
@@ -1784,6 +1798,7 @@ int git_config_rename_section_in_file(const char *config_filename,
 	int out_fd;
 	char buf[1024];
 	FILE *config_file;
+	struct stat st;
 
 	if (new_name && !section_name_is_ok(new_name)) {
 		ret = error("invalid section name: %s", new_name);
@@ -1803,6 +1818,14 @@ int git_config_rename_section_in_file(const char *config_filename,
 	if (!(config_file = fopen(config_filename, "rb"))) {
 		/* no config file means nothing to rename, no error */
 		goto unlock_and_out;
+	}
+
+	fstat(fileno(config_file), &st);
+
+	if (fchmod(out_fd, st.st_mode & 07777) < 0) {
+		ret = error("fchmod on %s failed: %s",
+				lock->filename, strerror(errno));
+		goto out;
 	}
 
 	while (fgets(buf, sizeof(buf), config_file)) {

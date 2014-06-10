@@ -75,6 +75,21 @@ unsigned long git_deflate_bound(git_zstream *, unsigned long);
 #define S_ISGITLINK(m)	(((m) & S_IFMT) == S_IFGITLINK)
 
 /*
+ * Some mode bits are also used internally for computations.
+ *
+ * They *must* not overlap with any valid modes, and they *must* not be emitted
+ * to outside world - i.e. appear on disk or network. In other words, it's just
+ * temporary fields, which we internally use, but they have to stay in-house.
+ *
+ * ( such approach is valid, as standard S_IF* fits into 16 bits, and in Git
+ *   codebase mode is `unsigned int` which is assumed to be at least 32 bits )
+ */
+
+/* used internally in tree-diff */
+#define S_DIFFTREE_IFXMIN_NEQ	0x80000000
+
+
+/*
  * Intensive research over the course of many years has shown that
  * port 9418 is totally unused by anything else. Or
  *
@@ -279,6 +294,7 @@ struct index_state {
 		 initialized : 1;
 	struct hashmap name_hash;
 	struct hashmap dir_hash;
+	unsigned char sha1[20];
 };
 
 extern struct index_state the_index;
@@ -602,6 +618,7 @@ extern int precomposed_unicode;
  * that is subject to stripspace.
  */
 extern char comment_line_char;
+extern int auto_comment_line_char;
 
 enum branch_track {
 	BRANCH_TRACK_UNSPECIFIED = -1,
@@ -1046,6 +1063,13 @@ struct ident_split {
 extern int split_ident_line(struct ident_split *, const char *, int);
 
 /*
+ * Like show_date, but pull the timestamp and tz parameters from
+ * the ident_split. It will also sanity-check the values and produce
+ * a well-known sentinel date if they appear bogus.
+ */
+const char *show_ident_date(const struct ident_split *id, enum date_mode mode);
+
+/*
  * Compare split idents for equality or strict ordering. Note that we
  * compare only the ident part of the line, ignoring any timestamp.
  *
@@ -1271,8 +1295,8 @@ extern int check_repository_format_version(const char *var, const char *value, v
 extern int git_env_bool(const char *, int);
 extern int git_config_system(void);
 extern int config_error_nonbool(const char *);
-#if defined(__GNUC__) && ! defined(__clang__)
-#define config_error_nonbool(s) (config_error_nonbool(s), -1)
+#if defined(__GNUC__)
+#define config_error_nonbool(s) (config_error_nonbool(s), const_error())
 #endif
 extern const char *get_log_output_encoding(void);
 extern const char *get_commit_output_encoding(void);
@@ -1322,6 +1346,8 @@ extern void fsync_or_die(int fd, const char *);
 
 extern ssize_t read_in_full(int fd, void *buf, size_t count);
 extern ssize_t write_in_full(int fd, const void *buf, size_t count);
+extern ssize_t pread_in_full(int fd, void *buf, size_t count, off_t offset);
+
 static inline ssize_t write_str_in_full(int fd, const char *str)
 {
 	return write_in_full(fd, str, strlen(str));
