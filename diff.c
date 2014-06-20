@@ -1361,7 +1361,7 @@ static struct diffstat_file *diffstat_add(struct diffstat_t *diffstat,
 					  const char *name_b)
 {
 	struct diffstat_file *x;
-	x = xcalloc(sizeof (*x), 1);
+	x = xcalloc(1, sizeof(*x));
 	ALLOC_GROW(diffstat->files, diffstat->nr + 1, diffstat->alloc);
 	diffstat->files[diffstat->nr++] = x;
 	if (name_b) {
@@ -3320,6 +3320,9 @@ void diff_setup_done(struct diff_options *options)
 	}
 
 	options->diff_path_counter = 0;
+
+	if (DIFF_OPT_TST(options, FOLLOW_RENAMES) && options->pathspec.nr != 1)
+		die(_("--follow requires exactly one pathspec"));
 }
 
 static int opt_arg(const char *arg, int arg_short, const char *arg_long, int *val)

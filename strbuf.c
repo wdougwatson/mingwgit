@@ -1,5 +1,6 @@
 #include "cache.h"
 #include "refs.h"
+#include "utf8.h"
 
 int starts_with(const char *str, const char *prefix)
 {
@@ -97,6 +98,29 @@ void strbuf_ltrim(struct strbuf *sb)
 	}
 	memmove(sb->buf, b, sb->len);
 	sb->buf[sb->len] = '\0';
+}
+
+int strbuf_reencode(struct strbuf *sb, const char *from, const char *to)
+{
+	char *out;
+	int len;
+
+	if (same_encoding(from, to))
+		return 0;
+
+	out = reencode_string_len(sb->buf, sb->len, to, from, &len);
+	if (!out)
+		return -1;
+
+	strbuf_attach(sb, out, len, len);
+	return 0;
+}
+
+void strbuf_tolower(struct strbuf *sb)
+{
+	char *p = sb->buf, *end = sb->buf + sb->len;
+	for (; p < end; p++)
+		*p = tolower(*p);
 }
 
 struct strbuf **strbuf_split_buf(const char *str, size_t slen,
@@ -562,4 +586,17 @@ int fprintf_ln(FILE *fp, const char *fmt, ...)
 	if (ret < 0 || putc('\n', fp) == EOF)
 		return -1;
 	return ret + 1;
+}
+
+char *xstrdup_tolower(const char *string)
+{
+	char *result;
+	size_t len, i;
+
+	len = strlen(string);
+	result = xmalloc(len + 1);
+	for (i = 0; i < len; i++)
+		result[i] = tolower(string[i]);
+	result[i] = '\0';
+	return result;
 }

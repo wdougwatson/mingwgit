@@ -617,6 +617,12 @@ test_cmp() {
 	$GIT_TEST_CMP "$@"
 }
 
+# test_cmp_bin - helper to compare binary files
+
+test_cmp_bin() {
+	cmp "$@"
+}
+
 # Check if the file expected to be empty is indeed empty, and barfs
 # otherwise.
 
@@ -715,6 +721,11 @@ test_ln_s_add () {
 		ln_s_obj=$(git hash-object -w "$2") &&
 		git update-index --add --cacheinfo 120000 $ln_s_obj "$2"
 	fi
+}
+
+# This function writes out its parameters, one per line
+test_write_lines () {
+	printf "%s\n" "$@"
 }
 
 perl () {
