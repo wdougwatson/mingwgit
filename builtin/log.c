@@ -347,8 +347,7 @@ static int cmd_log_walk(struct rev_info *rev)
 			rev->max_count++;
 		if (!rev->reflog_info) {
 			/* we allow cycles in reflog ancestry */
-			free(commit->buffer);
-			commit->buffer = NULL;
+			free_commit_buffer(commit);
 		}
 		free_commit_list(commit->parents);
 		commit->parents = NULL;
@@ -872,7 +871,7 @@ static char *find_branch_name(struct rev_info *rev)
 	int i, positive = -1;
 	unsigned char branch_sha1[20];
 	const unsigned char *tip_sha1;
-	const char *ref;
+	const char *ref, *v;
 	char *full_ref, *branch = NULL;
 
 	for (i = 0; i < rev->cmdline.nr; i++) {
@@ -888,9 +887,9 @@ static char *find_branch_name(struct rev_info *rev)
 	ref = rev->cmdline.rev[positive].name;
 	tip_sha1 = rev->cmdline.rev[positive].item->sha1;
 	if (dwim_ref(ref, strlen(ref), branch_sha1, &full_ref) &&
-	    starts_with(full_ref, "refs/heads/") &&
+	    skip_prefix(full_ref, "refs/heads/", &v) &&
 	    !hashcmp(tip_sha1, branch_sha1))
-		branch = xstrdup(full_ref + strlen("refs/heads/"));
+		branch = xstrdup(v);
 	free(full_ref);
 	return branch;
 }
@@ -925,9 +924,12 @@ static void make_cover_letter(struct rev_info *rev, int use_stdout,
 	log_write_email_headers(rev, head, &pp.subject, &pp.after_subject,
 				&need_8bit_cte);
 
-	for (i = 0; !need_8bit_cte && i < nr; i++)
-		if (has_non_ascii(list[i]->buffer))
+	for (i = 0; !need_8bit_cte && i < nr; i++) {
+		const char *buf = get_commit_buffer(list[i], NULL);
+		if (has_non_ascii(buf))
 			need_8bit_cte = 1;
+		unuse_commit_buffer(list[i], buf);
+	}
 
 	if (!branch_name)
 		branch_name = find_branch_name(rev);
@@ -1394,10 +1396,10 @@ int cmd_format_patch(int argc, const char **argv, const char *prefix)
 
 		if (check_head) {
 			unsigned char sha1[20];
-			const char *ref;
+			const char *ref, *v;
 			ref = resolve_ref_unsafe("HEAD", sha1, 1, NULL);
-			if (ref && starts_with(ref, "refs/heads/"))
-				branch_name = xstrdup(ref + strlen("refs/heads/"));
+			if (ref && skip_prefix(ref, "refs/heads/", &v))
+				branch_name = xstrdup(v);
 			else
 				branch_name = xstrdup(""); /* no branch */
 		}
@@ -1528,8 +1530,7 @@ int cmd_format_patch(int argc, const char **argv, const char *prefix)
 		    reopen_stdout(rev.numbered_files ? NULL : commit, NULL, &rev, quiet))
 			die(_("Failed to create output files"));
 		shown = log_tree_commit(&rev, commit);
-		free(commit->buffer);
-		commit->buffer = NULL;
+		free_commit_buffer(commit);
 
 		/* We put one extra blank line between formatted
 		 * patches and this flag is used by log-tree code

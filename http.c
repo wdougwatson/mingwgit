@@ -927,7 +927,7 @@ static int extract_param(const char *raw, const char *name,
 		return -1;
 	raw++;
 
-	while (*raw && !isspace(*raw))
+	while (*raw && !isspace(*raw) && *raw != ';')
 		strbuf_addch(out, *raw++);
 	return 0;
 }
@@ -971,7 +971,7 @@ static void extract_content_type(struct strbuf *raw, struct strbuf *type,
 
 	strbuf_reset(charset);
 	while (*p) {
-		while (isspace(*p))
+		while (isspace(*p) || *p == ';')
 			p++;
 		if (!extract_param(p, "charset", charset))
 			return;
@@ -1087,11 +1087,10 @@ static int update_url_from_redirect(struct strbuf *base,
 	if (!strcmp(asked, got->buf))
 		return 0;
 
-	if (!starts_with(asked, base->buf))
+	if (!skip_prefix(asked, base->buf, &tail))
 		die("BUG: update_url_from_redirect: %s is not a superset of %s",
 		    asked, base->buf);
 
-	tail = asked + base->len;
 	tail_len = strlen(tail);
 
 	if (got->len < tail_len ||
