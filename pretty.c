@@ -1376,7 +1376,7 @@ static size_t format_and_pad_commit(struct strbuf *sb, /* in UTF-8 */
 		case trunc_none:
 			break;
 		}
-		strbuf_addstr(sb, local_sb.buf);
+		strbuf_addbuf(sb, &local_sb);
 	} else {
 		int sb_len = sb->len, offset = 0;
 		if (c->flush_type == flush_left)
@@ -1520,8 +1520,6 @@ void format_commit_message(const struct commit *commit,
 
 	free(context.commit_encoding);
 	unuse_commit_buffer(commit, context.message);
-	free(context.signature_check.gpg_output);
-	free(context.signature_check.signer);
 }
 
 static void pp_header(struct pretty_print_context *pp,

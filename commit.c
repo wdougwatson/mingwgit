@@ -447,12 +447,7 @@ struct commit_list *copy_commit_list(struct commit_list *list)
 	struct commit_list *head = NULL;
 	struct commit_list **pp = &head;
 	while (list) {
-		struct commit_list *new;
-		new = xmalloc(sizeof(struct commit_list));
-		new->item = list->item;
-		new->next = NULL;
-		*pp = new;
-		pp = &new->next;
+		pp = commit_list_append(list->item, pp);
 		list = list->next;
 	}
 	return head;
@@ -1270,6 +1265,7 @@ void check_commit_signature(const struct commit* commit, struct signature_check 
 				      &gpg_output, &gpg_status);
 	if (status && !gpg_output.len)
 		goto out;
+	sigc->payload = strbuf_detach(&payload, NULL);
 	sigc->gpg_output = strbuf_detach(&gpg_output, NULL);
 	sigc->gpg_status = strbuf_detach(&gpg_status, NULL);
 	parse_gpg_output(sigc);

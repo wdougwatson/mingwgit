@@ -657,14 +657,12 @@ static int try_merge_strategy(const char *strategy, struct commit_list *common,
 			      struct commit_list *remoteheads,
 			      struct commit *head, const char *head_arg)
 {
-	int index_fd;
 	struct lock_file *lock = xcalloc(1, sizeof(struct lock_file));
 
-	index_fd = hold_locked_index(lock, 1);
+	hold_locked_index(lock, 1);
 	refresh_cache(REFRESH_QUIET);
 	if (active_cache_changed &&
-			(write_cache(index_fd, active_cache, active_nr) ||
-			 commit_locked_index(lock)))
+	    write_locked_index(&the_index, lock, COMMIT_LOCK))
 		return error(_("Unable to write index."));
 	rollback_lock_file(lock);
 
@@ -672,7 +670,6 @@ static int try_merge_strategy(const char *strategy, struct commit_list *common,
 		int clean, x;
 		struct commit *result;
 		struct lock_file *lock = xcalloc(1, sizeof(struct lock_file));
-		int index_fd;
 		struct commit_list *reversed = NULL;
 		struct merge_options o;
 		struct commit_list *j;
@@ -700,12 +697,11 @@ static int try_merge_strategy(const char *strategy, struct commit_list *common,
 		for (j = common; j; j = j->next)
 			commit_list_insert(j->item, &reversed);
 
-		index_fd = hold_locked_index(lock, 1);
+		hold_locked_index(lock, 1);
 		clean = merge_recursive(&o, head,
 				remoteheads->item, reversed, &result);
 		if (active_cache_changed &&
-				(write_cache(index_fd, active_cache, active_nr) ||
-				 commit_locked_index(lock)))
+		    write_locked_index(&the_index, lock, COMMIT_LOCK))
 			die (_("unable to write %s"), get_index_file());
 		rollback_lock_file(lock);
 		return clean ? 0 : 1;
@@ -843,16 +839,14 @@ static void prepare_to_commit(struct commit_list *remoteheads)
 static int merge_trivial(struct commit *head, struct commit_list *remoteheads)
 {
 	unsigned char result_tree[20], result_commit[20];
-	struct commit_list *parent = xmalloc(sizeof(*parent));
+	struct commit_list *parents, **pptr = &parents;
 
 	write_tree_trivial(result_tree);
 	printf(_("Wonderful.\n"));
-	parent->item = head;
-	parent->next = xmalloc(sizeof(*parent->next));
-	parent->next->item = remoteheads->item;
-	parent->next->next = NULL;
+	pptr = commit_list_append(head, pptr);
+	pptr = commit_list_append(remoteheads->item, pptr);
 	prepare_to_commit(remoteheads);
-	if (commit_tree(merge_msg.buf, merge_msg.len, result_tree, parent,
+	if (commit_tree(merge_msg.buf, merge_msg.len, result_tree, parents,
 			result_commit, NULL, sign_commit))
 		die(_("failed to write commit object"));
 	finish(head, remoteheads, result_commit, "In-index merge");
@@ -1282,10 +1276,7 @@ int cmd_merge(int argc, const char **argv, const char *prefix)
 				printf(_("Commit %s has a good GPG signature by %s\n"),
 				       hex, signature_check.signer);
 
-			free(signature_check.gpg_output);
-			free(signature_check.gpg_status);
-			free(signature_check.signer);
-			free(signature_check.key);
+			signature_check_clear(&signature_check);
 		}
 	}
 

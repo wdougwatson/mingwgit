@@ -153,6 +153,7 @@ int check_refname_format(const char *refname, int flags)
 	const __m128i tilde_lb = _mm_set1_epi8('~' - 1);
 
 	int component_count = 0;
+	int orig_flags = flags;
 
 	if (refname[0] == 0 || refname[0] == '/') {
 		/* entirely empty ref or initial ref component */
@@ -178,7 +179,7 @@ int check_refname_format(const char *refname, int flags)
 			 * End-of-page; fall back to slow method for
 			 * this entire ref.
 			 */
-			return check_refname_format_bytewise(refname, flags);
+			return check_refname_format_bytewise(refname, orig_flags);
 
 		tmp = _mm_loadu_si128((__m128i *)cp);
 		tmp1 = _mm_loadu_si128((__m128i *)(cp + 1));
@@ -1360,7 +1361,7 @@ static void read_loose_refs(const char *dirname, struct ref_dir *dir)
 
 		if (de->d_name[0] == '.')
 			continue;
-		if (has_extension(de->d_name, ".lock"))
+		if (ends_with(de->d_name, ".lock"))
 			continue;
 		strbuf_addstr(&refname, de->d_name);
 		refdir = *refs->name
@@ -3431,7 +3432,7 @@ static int do_for_each_reflog(struct strbuf *name, each_ref_fn fn, void *cb_data
 
 		if (de->d_name[0] == '.')
 			continue;
-		if (has_extension(de->d_name, ".lock"))
+		if (ends_with(de->d_name, ".lock"))
 			continue;
 		strbuf_addstr(name, de->d_name);
 		if (stat(git_path("logs/%s", name->buf), &st) < 0) {
