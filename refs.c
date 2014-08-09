@@ -7,27 +7,21 @@
 
 /*
  * How to handle various characters in refnames:
- * This table is used by both the SIMD and non-SIMD code.  It has
- * some cases that are only useful for the SIMD; these are handled
- * equivalently to the listed disposition in the non-SIMD code.
  * 0: An acceptable character for refs
- * 1: @, look for a following { to reject @{ in refs (SIMD or = 0)
- * 2: \0: End-of-component and string
- * 3: /: End-of-component (SIMD or = 2)
- * 4: ., look for a preceding . to reject .. in refs
- * 5: {, look for a preceding @ to reject @{ in refs
- * 6: *, usually a bad character except, once as a wildcard (SIMD or = 7)
- * 7: A bad character except * (see check_refname_component below)
+ * 1: End-of-component
+ * 2: ., look for a preceding . to reject .. in refs
+ * 3: {, look for a preceding @ to reject @{ in refs
+ * 4: A bad character: ASCII control characters, "~", "^", ":" or SP
  */
 static unsigned char refname_disposition[256] = {
-	2, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-	7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7,
-	7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 6, 0, 0, 0, 4, 3,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 0, 0, 0, 0, 7,
-	1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7, 7, 0, 7, 0,
+	1, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+	4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 2, 1,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 4,
 	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 5, 0, 0, 7, 7
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 4, 0, 4, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 4, 4
 };
 
 /*
@@ -39,9 +33,8 @@ static unsigned char refname_disposition[256] = {
  * - any path component of it begins with ".", or
  * - it has double dots "..", or
  * - it has ASCII control character, "~", "^", ":" or SP, anywhere, or
- * - it has pattern-matching notation "*", "?", "[", anywhere, or
- * - it ends with a "/", or
- * - it ends with ".lock", or
+ * - it ends with a "/".
+ * - it ends with ".lock"
  * - it contains a "\" (backslash)
  */
 static int check_refname_component(const char *refname, int flags)
@@ -53,19 +46,17 @@ static int check_refname_component(const char *refname, int flags)
 		int ch = *cp & 255;
 		unsigned char disp = refname_disposition[ch];
 		switch (disp) {
-		case 2: /* fall-through */
-		case 3:
+		case 1:
 			goto out;
-		case 4:
+		case 2:
 			if (last == '.')
 				return -1; /* Refname contains "..". */
 			break;
-		case 5:
+		case 3:
 			if (last == '@')
 				return -1; /* Refname contains "@{". */
 			break;
-		case 6: /* fall-through */
-		case 7:
+		case 4:
 			return -1;
 		}
 		last = ch;
@@ -88,7 +79,7 @@ out:
 	return cp - refname;
 }
 
-static int check_refname_format_bytewise(const char *refname, int flags)
+int check_refname_format(const char *refname, int flags)
 {
 	int component_len, component_count = 0;
 
@@ -123,196 +114,6 @@ static int check_refname_format_bytewise(const char *refname, int flags)
 		return -1; /* Refname has only one component. */
 	return 0;
 }
-
-#if defined(__GNUC__) && defined(__x86_64__)
-#define SSE_VECTOR_BYTES 16
-
-/* Vectorized version of check_refname_format. */
-int check_refname_format(const char *refname, int flags)
-{
-	const char *cp = refname;
-
-	const __m128i dot = _mm_set1_epi8('.');
-	const __m128i at = _mm_set1_epi8('@');
-	const __m128i curly = _mm_set1_epi8('{');
-	const __m128i slash = _mm_set1_epi8('/');
-	const __m128i zero = _mm_set1_epi8('\000');
-	const __m128i el = _mm_set1_epi8('l');
-
-	/* below '*', all characters are forbidden or rare */
-	const __m128i star_ub = _mm_set1_epi8('*' + 1);
-
-	const __m128i colon = _mm_set1_epi8(':');
-	const __m128i question = _mm_set1_epi8('?');
-
-	/* '['..'^' contains 4 characters: 3 forbidden and 1 rare */
-	const __m128i bracket_lb = _mm_set1_epi8('[' - 1);
-	const __m128i caret_ub = _mm_set1_epi8('^' + 1);
-
-	/* '~' and above are forbidden */
-	const __m128i tilde_lb = _mm_set1_epi8('~' - 1);
-
-	int component_count = 0;
-	int orig_flags = flags;
-
-	if (refname[0] == 0 || refname[0] == '/') {
-		/* entirely empty ref or initial ref component */
-		return -1;
-	}
-
-	/*
-	 * Initial ref component of '.'; below we look for /. so we'll
-	 * miss this.
-	 */
-	if (refname[0] == '.') {
-		if (refname[1] == '/' || refname[1] == '\0')
-			return -1;
-		if (!(flags & REFNAME_DOT_COMPONENT))
-			return -1;
-	}
-	while(1) {
-		__m128i tmp, tmp1, result;
-		uint64_t mask;
-
-		if ((uintptr_t) cp % PAGE_SIZE > PAGE_SIZE - SSE_VECTOR_BYTES  - 1)
-			/*
-			 * End-of-page; fall back to slow method for
-			 * this entire ref.
-			 */
-			return check_refname_format_bytewise(refname, orig_flags);
-
-		tmp = _mm_loadu_si128((__m128i *)cp);
-		tmp1 = _mm_loadu_si128((__m128i *)(cp + 1));
-
-		/*
-		 * This range (note the lt) contains some
-		 * permissible-but-rare characters (including all
-		 * characters >= 128), which we handle later.  It also
-		 * includes \000.
-		 */
-		result = _mm_cmplt_epi8(tmp, star_ub);
-
-		result = _mm_or_si128(result, _mm_cmpeq_epi8(tmp, question));
-		result = _mm_or_si128(result, _mm_cmpeq_epi8(tmp, colon));
-
-		/* This range contains the permissible ] as bycatch */
-		result = _mm_or_si128(result, _mm_and_si128(
-					      _mm_cmpgt_epi8(tmp, bracket_lb),
-					      _mm_cmplt_epi8(tmp, caret_ub)));
-
-		result = _mm_or_si128(result, _mm_cmpgt_epi8(tmp, tilde_lb));
-
-		/* .. */
-		result = _mm_or_si128(result, _mm_and_si128(
-					      _mm_cmpeq_epi8(tmp, dot),
-					      _mm_cmpeq_epi8(tmp1, dot)));
-		/* @{ */
-		result = _mm_or_si128(result, _mm_and_si128(
-					      _mm_cmpeq_epi8(tmp, at),
-					      _mm_cmpeq_epi8(tmp1, curly)));
-		/* // */
-		result = _mm_or_si128(result, _mm_and_si128(
-					      _mm_cmpeq_epi8(tmp, slash),
-					      _mm_cmpeq_epi8(tmp1, slash)));
-		/* trailing / */
-		result = _mm_or_si128(result, _mm_and_si128(
-					      _mm_cmpeq_epi8(tmp, slash),
-					      _mm_cmpeq_epi8(tmp1, zero)));
-		/* .l, beginning of .lock */
-		result = _mm_or_si128(result, _mm_and_si128(
-					      _mm_cmpeq_epi8(tmp, dot),
-					      _mm_cmpeq_epi8(tmp1, el)));
-		/*
-		 * Even though /. is not necessarily an error, we flag
-		 * it anyway. If we find it, we'll check if it's valid
-		 * and if so we'll advance just past it.
-		 */
-		result = _mm_or_si128(result, _mm_and_si128(
-					      _mm_cmpeq_epi8(tmp, slash),
-					      _mm_cmpeq_epi8(tmp1, dot)));
-
-		mask = _mm_movemask_epi8(result);
-		if (mask) {
-			/*
-			 * We've found either end-of-string, or some
-			 * probably-bad character or substring.
-			 */
-			int i = __builtin_ctz(mask);
-			switch (refname_disposition[cp[i] & 255]) {
-			case 0: /* fall-through */
-			case 5:
-				/*
-				 * bycatch: a good character that's in
-				 * one of the ranges of mostly-forbidden
-				 * characters
-				 */
-				cp += i + 1;
-				break;
-			case 1:
-				if (cp[i + 1] == '{')
-					return -1;
-				cp += i + 1;
-				break;
-			case 2:
-				if (!(flags & REFNAME_ALLOW_ONELEVEL)
-				    && !component_count && !strchr(refname, '/'))
-					/* Refname has only one component. */
-					return -1;
-				return 0;
-			case 3:
-				component_count ++;
-				/*
-				 * Even if leading dots are allowed, don't
-				 * allow "." as a component (".." is
-				 * prevented by case 4 below).
-				 */
-				if (cp[i + 1] == '.') {
-					if (cp[i + 2] == '\0')
-						return -1;
-					if (flags & REFNAME_DOT_COMPONENT) {
-						/* skip to just after the /. */
-						cp += i + 2;
-						break;
-					}
-					return -1;
-				} else if (cp[i + 1] == '/' || cp[i + 1] == '\0')
-					return -1;
-				break;
-			case 4:
-				if (cp[i + 1] == '.' || cp[i + 1] == '\0')
-					return -1;
-				/* .lock as end-of-component or end-of-string */
-				if ((!strncmp(cp + i, ".lock", 5))
-				    && (cp[i + 5] == '/' || cp[i + 5] == 0))
-					return -1;
-				cp += 1;
-				break;
-			case 6:
-				if (((cp == refname + i) || cp[i - 1] == '/')
-				    && (cp[i + 1] == '/' || cp[i + 1] == 0))
-					if (flags & REFNAME_REFSPEC_PATTERN) {
-						flags &= ~REFNAME_REFSPEC_PATTERN;
-						/* restart after the * */
-						cp += i + 1;
-						continue;
-					}
-				/* fall-through */
-			case 7:
-				return -1;
-			}
-		} else
-			cp += SSE_VECTOR_BYTES;
-	}
-}
-
-#else
-
-int check_refname_format (const char *refname, int flags)
-{
-	return check_refname_format_bytewise(refname, flags);
-}
-
-#endif
 
 struct ref_entry;
 
@@ -1533,6 +1334,7 @@ static const char *handle_missing_loose_ref(const char *refname,
 	}
 }
 
+/* This function needs to return a meaningful errno on failure */
 const char *resolve_ref_unsafe(const char *refname, unsigned char *sha1, int reading, int *flag)
 {
 	int depth = MAXDEPTH;
@@ -1543,8 +1345,10 @@ const char *resolve_ref_unsafe(const char *refname, unsigned char *sha1, int rea
 	if (flag)
 		*flag = 0;
 
-	if (check_refname_format(refname, REFNAME_ALLOW_ONELEVEL))
+	if (check_refname_format(refname, REFNAME_ALLOW_ONELEVEL)) {
+		errno = EINVAL;
 		return NULL;
+	}
 
 	for (;;) {
 		char path[PATH_MAX];
@@ -1552,8 +1356,10 @@ const char *resolve_ref_unsafe(const char *refname, unsigned char *sha1, int rea
 		char *buf;
 		int fd;
 
-		if (--depth < 0)
+		if (--depth < 0) {
+			errno = ELOOP;
 			return NULL;
+		}
 
 		git_snpath(path, sizeof(path), "%s", refname);
 
@@ -1615,9 +1421,13 @@ const char *resolve_ref_unsafe(const char *refname, unsigned char *sha1, int rea
 				return NULL;
 		}
 		len = read_in_full(fd, buffer, sizeof(buffer)-1);
-		close(fd);
-		if (len < 0)
+		if (len < 0) {
+			int save_errno = errno;
+			close(fd);
+			errno = save_errno;
 			return NULL;
+		}
+		close(fd);
 		while (len && isspace(buffer[len-1]))
 			len--;
 		buffer[len] = '\0';
@@ -1634,6 +1444,7 @@ const char *resolve_ref_unsafe(const char *refname, unsigned char *sha1, int rea
 			    (buffer[40] != '\0' && !isspace(buffer[40]))) {
 				if (flag)
 					*flag |= REF_ISBROKEN;
+				errno = EINVAL;
 				return NULL;
 			}
 			return refname;
@@ -1646,6 +1457,7 @@ const char *resolve_ref_unsafe(const char *refname, unsigned char *sha1, int rea
 		if (check_refname_format(buf, REFNAME_ALLOW_ONELEVEL)) {
 			if (flag)
 				*flag |= REF_ISBROKEN;
+			errno = EINVAL;
 			return NULL;
 		}
 		refname = strcpy(refname_buffer, buf);
@@ -1730,9 +1542,8 @@ static enum peel_status peel_object(const unsigned char *name, unsigned char *sh
 
 	if (o->type == OBJ_NONE) {
 		int type = sha1_object_info(name, NULL);
-		if (type < 0)
+		if (type < 0 || !object_as_type(o, type, 0))
 			return PEEL_INVALID;
-		o->type = type;
 	}
 
 	if (o->type != OBJ_TAG)
@@ -2131,18 +1942,22 @@ int refname_match(const char *abbrev_name, const char *full_name)
 	return 0;
 }
 
+/* This function should make sure errno is meaningful on error */
 static struct ref_lock *verify_lock(struct ref_lock *lock,
 	const unsigned char *old_sha1, int mustexist)
 {
 	if (read_ref_full(lock->ref_name, lock->old_sha1, mustexist, NULL)) {
+		int save_errno = errno;
 		error("Can't verify ref %s", lock->ref_name);
 		unlock_ref(lock);
+		errno = save_errno;
 		return NULL;
 	}
 	if (hashcmp(lock->old_sha1, old_sha1)) {
 		error("Ref %s is at %s but expected %s", lock->ref_name,
 			sha1_to_hex(lock->old_sha1), sha1_to_hex(old_sha1));
 		unlock_ref(lock);
+		errno = EBUSY;
 		return NULL;
 	}
 	return lock;
@@ -2155,14 +1970,16 @@ static int remove_empty_directories(const char *file)
 	 * only empty directories), remove them.
 	 */
 	struct strbuf path;
-	int result;
+	int result, save_errno;
 
 	strbuf_init(&path, 20);
 	strbuf_addstr(&path, file);
 
 	result = remove_dir_recursively(&path, REMOVE_DIR_EMPTY_ONLY);
+	save_errno = errno;
 
 	strbuf_release(&path);
+	errno = save_errno;
 
 	return result;
 }
@@ -2251,6 +2068,7 @@ int dwim_log(const char *str, int len, unsigned char *sha1, char **log)
 	return logs_found;
 }
 
+/* This function should make sure errno is meaningful on error */
 static struct ref_lock *lock_ref_sha1_basic(const char *refname,
 					    const unsigned char *old_sha1,
 					    int flags, int *type_p)
@@ -2411,6 +2229,7 @@ static int write_packed_entry_fn(struct ref_entry *entry, void *cb_data)
 	return 0;
 }
 
+/* This should return a meaningful errno on failure */
 int lock_packed_refs(int flags)
 {
 	struct packed_ref_cache *packed_ref_cache;
@@ -2430,11 +2249,16 @@ int lock_packed_refs(int flags)
 	return 0;
 }
 
+/*
+ * Commit the packed refs changes.
+ * On error we must make sure that errno contains a meaningful value.
+ */
 int commit_packed_refs(void)
 {
 	struct packed_ref_cache *packed_ref_cache =
 		get_packed_ref_cache(&ref_cache);
 	int error = 0;
+	int save_errno = 0;
 
 	if (!packed_ref_cache->lock)
 		die("internal error: packed-refs not locked");
@@ -2444,10 +2268,13 @@ int commit_packed_refs(void)
 	do_for_each_entry_in_dir(get_packed_ref_dir(packed_ref_cache),
 				 0, write_packed_entry_fn,
 				 &packed_ref_cache->lock->fd);
-	if (commit_lock_file(packed_ref_cache->lock))
+	if (commit_lock_file(packed_ref_cache->lock)) {
+		save_errno = errno;
 		error = -1;
+	}
 	packed_ref_cache->lock = NULL;
 	release_packed_ref_cache(packed_ref_cache);
+	errno = save_errno;
 	return error;
 }
 
@@ -2654,12 +2481,12 @@ static int curate_packed_ref_fn(struct ref_entry *entry, void *cb_data)
 	return 0;
 }
 
-int repack_without_refs(const char **refnames, int n)
+int repack_without_refs(const char **refnames, int n, struct strbuf *err)
 {
 	struct ref_dir *packed;
 	struct string_list refs_to_delete = STRING_LIST_INIT_DUP;
 	struct string_list_item *ref_to_delete;
-	int i, removed = 0;
+	int i, ret, removed = 0;
 
 	/* Look for a packed ref */
 	for (i = 0; i < n; i++)
@@ -2671,6 +2498,11 @@ int repack_without_refs(const char **refnames, int n)
 		return 0; /* no refname exists in packed refs */
 
 	if (lock_packed_refs(0)) {
+		if (err) {
+			unable_to_lock_message(git_path("packed-refs"), errno,
+					       err);
+			return -1;
+		}
 		unable_to_lock_error(git_path("packed-refs"), errno);
 		return error("cannot delete '%s' from packed refs", refnames[i]);
 	}
@@ -2697,12 +2529,16 @@ int repack_without_refs(const char **refnames, int n)
 	}
 
 	/* Write what remains */
-	return commit_packed_refs();
+	ret = commit_packed_refs();
+	if (ret && err)
+		strbuf_addf(err, "unable to overwrite old ref-pack file: %s",
+			    strerror(errno));
+	return ret;
 }
 
 static int repack_without_ref(const char *refname)
 {
-	return repack_without_refs(&refname, 1);
+	return repack_without_refs(&refname, 1, NULL);
 }
 
 static int delete_ref_loose(struct ref_lock *lock, int flag)
@@ -2940,6 +2776,7 @@ static int copy_msg(char *buf, const char *msg)
 	return cp - buf;
 }
 
+/* This function must set a meaningful errno on failure */
 int log_ref_setup(const char *refname, char *logfile, int bufsize)
 {
 	int logfd, oflags = O_APPEND | O_WRONLY;
@@ -2950,9 +2787,12 @@ int log_ref_setup(const char *refname, char *logfile, int bufsize)
 	     starts_with(refname, "refs/remotes/") ||
 	     starts_with(refname, "refs/notes/") ||
 	     !strcmp(refname, "HEAD"))) {
-		if (safe_create_leading_directories(logfile) < 0)
-			return error("unable to create directory for %s",
-				     logfile);
+		if (safe_create_leading_directories(logfile) < 0) {
+			int save_errno = errno;
+			error("unable to create directory for %s", logfile);
+			errno = save_errno;
+			return -1;
+		}
 		oflags |= O_CREAT;
 	}
 
@@ -2963,15 +2803,22 @@ int log_ref_setup(const char *refname, char *logfile, int bufsize)
 
 		if ((oflags & O_CREAT) && errno == EISDIR) {
 			if (remove_empty_directories(logfile)) {
-				return error("There are still logs under '%s'",
-					     logfile);
+				int save_errno = errno;
+				error("There are still logs under '%s'",
+				      logfile);
+				errno = save_errno;
+				return -1;
 			}
 			logfd = open(logfile, oflags, 0666);
 		}
 
-		if (logfd < 0)
-			return error("Unable to append to %s: %s",
-				     logfile, strerror(errno));
+		if (logfd < 0) {
+			int save_errno = errno;
+			error("Unable to append to %s: %s", logfile,
+			      strerror(errno));
+			errno = save_errno;
+			return -1;
+		}
 	}
 
 	adjust_shared_perm(logfile);
@@ -3011,24 +2858,38 @@ static int log_ref_write(const char *refname, const unsigned char *old_sha1,
 		len += copy_msg(logrec + len - 1, msg) - 1;
 	written = len <= maxlen ? write_in_full(logfd, logrec, len) : -1;
 	free(logrec);
-	if (close(logfd) != 0 || written != len)
-		return error("Unable to append to %s", log_file);
+	if (written != len) {
+		int save_errno = errno;
+		close(logfd);
+		error("Unable to append to %s", log_file);
+		errno = save_errno;
+		return -1;
+	}
+	if (close(logfd)) {
+		int save_errno = errno;
+		error("Unable to append to %s", log_file);
+		errno = save_errno;
+		return -1;
+	}
 	return 0;
 }
 
-static int is_branch(const char *refname)
+int is_branch(const char *refname)
 {
 	return !strcmp(refname, "HEAD") || starts_with(refname, "refs/heads/");
 }
 
+/* This function must return a meaningful errno */
 int write_ref_sha1(struct ref_lock *lock,
 	const unsigned char *sha1, const char *logmsg)
 {
 	static char term = '\n';
 	struct object *o;
 
-	if (!lock)
+	if (!lock) {
+		errno = EINVAL;
 		return -1;
+	}
 	if (!lock->force_write && !hashcmp(lock->old_sha1, sha1)) {
 		unlock_ref(lock);
 		return 0;
@@ -3038,19 +2899,23 @@ int write_ref_sha1(struct ref_lock *lock,
 		error("Trying to write ref %s with nonexistent object %s",
 			lock->ref_name, sha1_to_hex(sha1));
 		unlock_ref(lock);
+		errno = EINVAL;
 		return -1;
 	}
 	if (o->type != OBJ_COMMIT && is_branch(lock->ref_name)) {
 		error("Trying to write non-commit object %s to branch %s",
 			sha1_to_hex(sha1), lock->ref_name);
 		unlock_ref(lock);
+		errno = EINVAL;
 		return -1;
 	}
 	if (write_in_full(lock->lock_fd, sha1_to_hex(sha1), 40) != 40 ||
-	    write_in_full(lock->lock_fd, &term, 1) != 1
-		|| close_ref(lock) < 0) {
+	    write_in_full(lock->lock_fd, &term, 1) != 1 ||
+	    close_ref(lock) < 0) {
+		int save_errno = errno;
 		error("Couldn't write %s", lock->lk->filename);
 		unlock_ref(lock);
+		errno = save_errno;
 		return -1;
 	}
 	clear_loose_ref_cache(&ref_cache);
@@ -3487,10 +3352,13 @@ static struct ref_lock *update_ref_lock(const char *refname,
 
 static int update_ref_write(const char *action, const char *refname,
 			    const unsigned char *sha1, struct ref_lock *lock,
-			    enum action_on_err onerr)
+			    struct strbuf *err, enum action_on_err onerr)
 {
 	if (write_ref_sha1(lock, sha1, action) < 0) {
 		const char *str = "Cannot update the ref '%s'.";
+		if (err)
+			strbuf_addf(err, str, refname);
+
 		switch (onerr) {
 		case UPDATE_REFS_MSG_ON_ERR: error(str, refname); break;
 		case UPDATE_REFS_DIE_ON_ERR: die(str, refname); break;
@@ -3533,20 +3401,18 @@ struct ref_transaction *ref_transaction_begin(void)
 	return xcalloc(1, sizeof(struct ref_transaction));
 }
 
-static void ref_transaction_free(struct ref_transaction *transaction)
+void ref_transaction_free(struct ref_transaction *transaction)
 {
 	int i;
+
+	if (!transaction)
+		return;
 
 	for (i = 0; i < transaction->nr; i++)
 		free(transaction->updates[i]);
 
 	free(transaction->updates);
 	free(transaction);
-}
-
-void ref_transaction_rollback(struct ref_transaction *transaction)
-{
-	ref_transaction_free(transaction);
 }
 
 static struct ref_update *add_update(struct ref_transaction *transaction,
@@ -3561,23 +3427,30 @@ static struct ref_update *add_update(struct ref_transaction *transaction,
 	return update;
 }
 
-void ref_transaction_update(struct ref_transaction *transaction,
-			    const char *refname,
-			    unsigned char *new_sha1, unsigned char *old_sha1,
-			    int flags, int have_old)
+int ref_transaction_update(struct ref_transaction *transaction,
+			   const char *refname,
+			   const unsigned char *new_sha1,
+			   const unsigned char *old_sha1,
+			   int flags, int have_old,
+			   struct strbuf *err)
 {
-	struct ref_update *update = add_update(transaction, refname);
+	struct ref_update *update;
 
+	if (have_old && !old_sha1)
+		die("BUG: have_old is true but old_sha1 is NULL");
+
+	update = add_update(transaction, refname);
 	hashcpy(update->new_sha1, new_sha1);
 	update->flags = flags;
 	update->have_old = have_old;
 	if (have_old)
 		hashcpy(update->old_sha1, old_sha1);
+	return 0;
 }
 
 void ref_transaction_create(struct ref_transaction *transaction,
 			    const char *refname,
-			    unsigned char *new_sha1,
+			    const unsigned char *new_sha1,
 			    int flags)
 {
 	struct ref_update *update = add_update(transaction, refname);
@@ -3591,7 +3464,7 @@ void ref_transaction_create(struct ref_transaction *transaction,
 
 void ref_transaction_delete(struct ref_transaction *transaction,
 			    const char *refname,
-			    unsigned char *old_sha1,
+			    const unsigned char *old_sha1,
 			    int flags, int have_old)
 {
 	struct ref_update *update = add_update(transaction, refname);
@@ -3612,7 +3485,7 @@ int update_ref(const char *action, const char *refname,
 	lock = update_ref_lock(refname, oldval, flags, NULL, onerr);
 	if (!lock)
 		return 1;
-	return update_ref_write(action, refname, sha1, lock, onerr);
+	return update_ref_write(action, refname, sha1, lock, NULL, onerr);
 }
 
 static int ref_update_compare(const void *r1, const void *r2)
@@ -3623,28 +3496,23 @@ static int ref_update_compare(const void *r1, const void *r2)
 }
 
 static int ref_update_reject_duplicates(struct ref_update **updates, int n,
-					enum action_on_err onerr)
+					struct strbuf *err)
 {
 	int i;
 	for (i = 1; i < n; i++)
 		if (!strcmp(updates[i - 1]->refname, updates[i]->refname)) {
 			const char *str =
 				"Multiple updates for ref '%s' not allowed.";
-			switch (onerr) {
-			case UPDATE_REFS_MSG_ON_ERR:
-				error(str, updates[i]->refname); break;
-			case UPDATE_REFS_DIE_ON_ERR:
-				die(str, updates[i]->refname); break;
-			case UPDATE_REFS_QUIET_ON_ERR:
-				break;
-			}
+			if (err)
+				strbuf_addf(err, str, updates[i]->refname);
+
 			return 1;
 		}
 	return 0;
 }
 
 int ref_transaction_commit(struct ref_transaction *transaction,
-			   const char *msg, enum action_on_err onerr)
+			   const char *msg, struct strbuf *err)
 {
 	int ret = 0, delnum = 0, i;
 	const char **delnames;
@@ -3659,7 +3527,7 @@ int ref_transaction_commit(struct ref_transaction *transaction,
 
 	/* Copy, sort, and reject duplicate refs */
 	qsort(updates, n, sizeof(*updates), ref_update_compare);
-	ret = ref_update_reject_duplicates(updates, n, onerr);
+	ret = ref_update_reject_duplicates(updates, n, err);
 	if (ret)
 		goto cleanup;
 
@@ -3671,8 +3539,12 @@ int ref_transaction_commit(struct ref_transaction *transaction,
 					       (update->have_old ?
 						update->old_sha1 : NULL),
 					       update->flags,
-					       &update->type, onerr);
+					       &update->type,
+					       UPDATE_REFS_QUIET_ON_ERR);
 		if (!update->lock) {
+			if (err)
+				strbuf_addf(err, "Cannot lock the ref '%s'.",
+					    update->refname);
 			ret = 1;
 			goto cleanup;
 		}
@@ -3686,7 +3558,8 @@ int ref_transaction_commit(struct ref_transaction *transaction,
 			ret = update_ref_write(msg,
 					       update->refname,
 					       update->new_sha1,
-					       update->lock, onerr);
+					       update->lock, err,
+					       UPDATE_REFS_QUIET_ON_ERR);
 			update->lock = NULL; /* freed by update_ref_write */
 			if (ret)
 				goto cleanup;
@@ -3703,7 +3576,7 @@ int ref_transaction_commit(struct ref_transaction *transaction,
 		}
 	}
 
-	ret |= repack_without_refs(delnames, delnum);
+	ret |= repack_without_refs(delnames, delnum, err);
 	for (i = 0; i < delnum; i++)
 		unlink_or_warn(git_path("logs/%s", delnames[i]));
 	clear_loose_ref_cache(&ref_cache);
@@ -3713,7 +3586,6 @@ cleanup:
 		if (updates[i]->lock)
 			unlock_ref(updates[i]->lock);
 	free(delnames);
-	ref_transaction_free(transaction);
 	return ret;
 }
 

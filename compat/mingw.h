@@ -121,10 +121,7 @@ static inline int fcntl(int fd, int cmd, ...)
  * simple adaptors
  */
 
-static inline int mingw_mkdir(const char *path, int mode)
-{
-	return mkdir(path);
-}
+int mingw_mkdir(const char *path, int mode);
 #define mkdir mingw_mkdir
 
 #define WNOHANG 1
@@ -195,11 +192,27 @@ FILE *mingw_freopen (const char *filename, const char *otype, FILE *stream);
 int mingw_fflush(FILE *stream);
 #define fflush mingw_fflush
 
+int mingw_access(const char *filename, int mode);
+#undef access
+#define access mingw_access
+
+int mingw_chdir(const char *dirname);
+#define chdir mingw_chdir
+
+int mingw_chmod(const char *filename, int mode);
+#define chmod mingw_chmod
+
+char *mingw_mktemp(char *template);
+#define mktemp mingw_mktemp
+
 char *mingw_getcwd(char *pointer, int len);
 #define getcwd mingw_getcwd
 
 char *mingw_getenv(const char *name);
 #define getenv mingw_getenv
+int mingw_putenv(const char *namevalue);
+#define putenv mingw_putenv
+#define unsetenv mingw_putenv
 
 int mingw_gethostname(char *host, int namelen);
 #define gethostname mingw_gethostname
@@ -347,12 +360,8 @@ int mingw_offset_1st_component(const char *path);
 void mingw_open_html(const char *path);
 #define open_html mingw_open_html
 
-/*
- * helpers
- */
-
-char **make_augmented_environ(const char *const *vars);
-void free_environ(char **env);
+void mingw_mark_as_git_dir(const char *dir);
+#define mark_as_git_dir mingw_mark_as_git_dir
 
 /**
  * Converts UTF-8 encoded string to UTF-16LE.

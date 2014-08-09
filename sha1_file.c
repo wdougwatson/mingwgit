@@ -36,9 +36,6 @@ static inline uintmax_t sz_fmt(size_t s) { return s; }
 
 const unsigned char null_sha1[20];
 
-static const char *no_log_pack_access = "no_log_pack_access";
-static const char *log_pack_access;
-
 /*
  * This is meant to hold a *small* number of objects that you would
  * want read_sha1_file() to be able to return, but yet you do not want
@@ -268,9 +265,9 @@ static struct alternate_object_database **alt_odb_tail;
  * SHA1, an extra slash for the first level indirection, and the
  * terminating NUL.
  */
-static int link_alt_odb_entry(const char *entry, const char *relative_base, int depth)
+static int link_alt_odb_entry(const char *entry, const char *relative_base,
+	int depth, const char *normalized_objdir)
 {
-	const char *objdir = get_object_directory();
 	struct alternate_object_database *ent;
 	struct alternate_object_database *alt;
 	int pfxlen, entlen;
@@ -321,7 +318,7 @@ static int link_alt_odb_entry(const char *entry, const char *relative_base, int 
 			return -1;
 		}
 	}
-	if (!strcmp(ent->base, objdir)) {
+	if (!strcmp_icase(ent->base, normalized_objdir)) {
 		free(ent);
 		return -1;
 	}
@@ -345,12 +342,16 @@ static void link_alt_odb_entries(const char *alt, int len, int sep,
 	struct string_list entries = STRING_LIST_INIT_NODUP;
 	char *alt_copy;
 	int i;
+	struct strbuf objdirbuf = STRBUF_INIT;
 
 	if (depth > 5) {
 		error("%s: ignoring alternate object stores, nesting too deep.",
 				relative_base);
 		return;
 	}
+
+	strbuf_addstr(&objdirbuf, absolute_path(get_object_directory()));
+	normalize_path_copy(objdirbuf.buf, objdirbuf.buf);
 
 	alt_copy = xmemdupz(alt, len);
 	string_list_split_in_place(&entries, alt_copy, sep, -1);
@@ -362,11 +363,12 @@ static void link_alt_odb_entries(const char *alt, int len, int sep,
 			error("%s: ignoring relative alternate object store %s",
 					relative_base, entry);
 		} else {
-			link_alt_odb_entry(entry, relative_base, depth);
+			link_alt_odb_entry(entry, relative_base, depth, objdirbuf.buf);
 		}
 	}
 	string_list_clear(&entries, 0);
 	free(alt_copy);
+	strbuf_release(&objdirbuf);
 }
 
 void read_info_alternates(const char * relative_base, int depth)
@@ -2081,27 +2083,9 @@ static void *read_object(const unsigned char *sha1, enum object_type *type,
 
 static void write_pack_access_log(struct packed_git *p, off_t obj_offset)
 {
-	static FILE *log_file;
-
-	if (!log_pack_access)
-		log_pack_access = getenv("GIT_TRACE_PACK_ACCESS");
-	if (!log_pack_access)
-		log_pack_access = no_log_pack_access;
-	if (log_pack_access == no_log_pack_access)
-		return;
-
-	if (!log_file) {
-		log_file = fopen(log_pack_access, "w");
-		if (!log_file) {
-			error("cannot open pack access log '%s' for writing: %s",
-			      log_pack_access, strerror(errno));
-			log_pack_access = no_log_pack_access;
-			return;
-		}
-	}
-	fprintf(log_file, "%s %"PRIuMAX"\n",
-		p->pack_name, (uintmax_t)obj_offset);
-	fflush(log_file);
+	static struct trace_key pack_access = TRACE_KEY_INIT(PACK_ACCESS);
+	trace_printf_key(&pack_access, "%s %"PRIuMAX"\n",
+			 p->pack_name, (uintmax_t)obj_offset);
 }
 
 int do_check_packed_object_crc;
@@ -2126,8 +2110,7 @@ void *unpack_entry(struct packed_git *p, off_t obj_offset,
 	int delta_stack_nr = 0, delta_stack_alloc = UNPACK_ENTRY_STACK_PREALLOC;
 	int base_from_cache = 0;
 
-	if (log_pack_access != no_log_pack_access)
-		write_pack_access_log(p, obj_offset);
+	write_pack_access_log(p, obj_offset);
 
 	/* PHASE 1: drill down to the innermost base object */
 	for (;;) {

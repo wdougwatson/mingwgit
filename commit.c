@@ -18,19 +18,6 @@ int save_commit_buffer = 1;
 
 const char *commit_type = "commit";
 
-static struct commit *check_commit(struct object *obj,
-				   const unsigned char *sha1,
-				   int quiet)
-{
-	if (obj->type != OBJ_COMMIT) {
-		if (!quiet)
-			error("Object %s is a %s, not a commit",
-			      sha1_to_hex(sha1), typename(obj->type));
-		return NULL;
-	}
-	return (struct commit *) obj;
-}
-
 struct commit *lookup_commit_reference_gently(const unsigned char *sha1,
 					      int quiet)
 {
@@ -38,7 +25,7 @@ struct commit *lookup_commit_reference_gently(const unsigned char *sha1,
 
 	if (!obj)
 		return NULL;
-	return check_commit(obj, sha1, quiet);
+	return object_as_type(obj, OBJ_COMMIT, quiet);
 }
 
 struct commit *lookup_commit_reference(const unsigned char *sha1)
@@ -61,13 +48,9 @@ struct commit *lookup_commit_or_die(const unsigned char *sha1, const char *ref_n
 struct commit *lookup_commit(const unsigned char *sha1)
 {
 	struct object *obj = lookup_object(sha1);
-	if (!obj) {
-		struct commit *c = alloc_commit_node();
-		return create_object(sha1, OBJ_COMMIT, c);
-	}
-	if (!obj->type)
-		obj->type = OBJ_COMMIT;
-	return check_commit(obj, sha1, 0);
+	if (!obj)
+		return create_object(sha1, alloc_commit_node());
+	return object_as_type(obj, OBJ_COMMIT, 0);
 }
 
 struct commit *lookup_commit_reference_by_name(const char *name)
@@ -781,44 +764,40 @@ void sort_in_topological_order(struct commit_list **list, enum rev_sort_order so
 
 static const unsigned all_flags = (PARENT1 | PARENT2 | STALE | RESULT);
 
-static struct commit *interesting(struct commit_list *list)
+static int queue_has_nonstale(struct prio_queue *queue)
 {
-	while (list) {
-		struct commit *commit = list->item;
-		list = list->next;
-		if (commit->object.flags & STALE)
-			continue;
-		return commit;
+	int i;
+	for (i = 0; i < queue->nr; i++) {
+		struct commit *commit = queue->array[i].data;
+		if (!(commit->object.flags & STALE))
+			return 1;
 	}
-	return NULL;
+	return 0;
 }
 
 /* all input commits in one and twos[] must have been parsed! */
 static struct commit_list *paint_down_to_common(struct commit *one, int n, struct commit **twos)
 {
-	struct commit_list *list = NULL;
+	struct prio_queue queue = { compare_commits_by_commit_date };
 	struct commit_list *result = NULL;
 	int i;
 
 	one->object.flags |= PARENT1;
-	commit_list_insert_by_date(one, &list);
-	if (!n)
-		return list;
+	if (!n) {
+		commit_list_append(one, &result);
+		return result;
+	}
+	prio_queue_put(&queue, one);
+
 	for (i = 0; i < n; i++) {
 		twos[i]->object.flags |= PARENT2;
-		commit_list_insert_by_date(twos[i], &list);
+		prio_queue_put(&queue, twos[i]);
 	}
 
-	while (interesting(list)) {
-		struct commit *commit;
+	while (queue_has_nonstale(&queue)) {
+		struct commit *commit = prio_queue_get(&queue);
 		struct commit_list *parents;
-		struct commit_list *next;
 		int flags;
-
-		commit = list->item;
-		next = list->next;
-		free(list);
-		list = next;
 
 		flags = commit->object.flags & (PARENT1 | PARENT2 | STALE);
 		if (flags == (PARENT1 | PARENT2)) {
@@ -838,11 +817,11 @@ static struct commit_list *paint_down_to_common(struct commit *one, int n, struc
 			if (parse_commit(p))
 				return NULL;
 			p->object.flags |= flags;
-			commit_list_insert_by_date(p, &list);
+			prio_queue_put(&queue, p);
 		}
 	}
 
-	free_commit_list(list);
+	clear_prio_queue(&queue);
 	return result;
 }
 
@@ -987,12 +966,7 @@ struct commit_list *get_merge_bases_many(struct commit *one,
 	}
 
 	/* There are more than one */
-	cnt = 0;
-	list = result;
-	while (list) {
-		list = list->next;
-		cnt++;
-	}
+	cnt = commit_list_count(result);
 	rslt = xcalloc(cnt, sizeof(*rslt));
 	for (list = result, i = 0; list; list = list->next)
 		rslt[i++] = list->item;
@@ -1172,6 +1146,40 @@ int parse_signed_commit(const struct commit *commit,
 	return saw_signature;
 }
 
+int remove_signature(struct strbuf *buf)
+{
+	const char *line = buf->buf;
+	const char *tail = buf->buf + buf->len;
+	int in_signature = 0;
+	const char *sig_start = NULL;
+	const char *sig_end = NULL;
+
+	while (line < tail) {
+		const char *next = memchr(line, '\n', tail - line);
+		next = next ? next + 1 : tail;
+
+		if (in_signature && line[0] == ' ')
+			sig_end = next;
+		else if (starts_with(line, gpg_sig_header) &&
+			 line[gpg_sig_header_len] == ' ') {
+			sig_start = line;
+			sig_end = next;
+			in_signature = 1;
+		} else {
+			if (*line == '\n')
+				/* dump the whole remainder of the buffer */
+				next = tail;
+			in_signature = 0;
+		}
+		line = next;
+	}
+
+	if (sig_start)
+		strbuf_remove(buf, sig_start - buf->buf, sig_end - sig_start);
+
+	return sig_start != NULL;
+}
+
 static void handle_signed_tag(struct commit *parent, struct commit_extra_header ***tail)
 {
 	struct merge_remote_desc *desc;
@@ -1308,6 +1316,19 @@ struct commit_extra_header *read_commit_extra_headers(struct commit *commit,
 	extra = read_commit_extra_header_lines(buffer, size, exclude);
 	unuse_commit_buffer(commit, buffer);
 	return extra;
+}
+
+void for_each_mergetag(each_mergetag_fn fn, struct commit *commit, void *data)
+{
+	struct commit_extra_header *extra, *to_free;
+
+	to_free = read_commit_extra_headers(commit, NULL);
+	for (extra = to_free; extra; extra = extra->next) {
+		if (strcmp(extra->key, "mergetag"))
+			continue; /* not a merge tag */
+		fn(commit, extra, data);
+	}
+	free_commit_extra_headers(to_free);
 }
 
 static inline int standard_header_field(const char *field, size_t len)

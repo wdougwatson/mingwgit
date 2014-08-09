@@ -340,6 +340,8 @@ all::
 #
 # Define GMTIME_UNRELIABLE_ERRORS if your gmtime() function does not
 # return NULL when it receives a bogus time_t.
+#
+# Define HAVE_CLOCK_GETTIME if your platform has clock_gettime in librt.
 
 GIT-VERSION-FILE: FORCE
 	@$(SHELL_PATH) ./GIT-VERSION-GEN
@@ -1500,6 +1502,11 @@ ifdef GMTIME_UNRELIABLE_ERRORS
 	BASIC_CFLAGS += -DGMTIME_UNRELIABLE_ERRORS
 endif
 
+ifdef HAVE_CLOCK_GETTIME
+	BASIC_CFLAGS += -DHAVE_CLOCK_GETTIME
+	EXTLIBS += -lrt
+endif
+
 ifeq ($(TCLTK_PATH),)
 NO_TCLTK = NoThanks
 endif
@@ -1555,13 +1562,13 @@ endif
 PROFILE_DIR := $(CURDIR)
 
 ifeq ("$(PROFILE)","GEN")
-	CFLAGS += -fprofile-generate=$(PROFILE_DIR) -DNO_NORETURN=1
+	BASIC_CFLAGS += -fprofile-generate=$(PROFILE_DIR) -DNO_NORETURN=1
 	EXTLIBS += -lgcov
 	export CCACHE_DISABLE = t
 	V = 1
 else
 ifneq ("$(PROFILE)","")
-	CFLAGS += -fprofile-use=$(PROFILE_DIR) -fprofile-correction -DNO_NORETURN=1
+	BASIC_CFLAGS += -fprofile-use=$(PROFILE_DIR) -fprofile-correction -DNO_NORETURN=1
 	export CCACHE_DISABLE = t
 	V = 1
 endif
@@ -1646,12 +1653,20 @@ SHELL = $(SHELL_PATH)
 all:: shell_compatibility_test
 
 ifeq "$(PROFILE)" "BUILD"
-ifeq ($(filter all,$(MAKECMDGOALS)),all)
-all:: profile-clean
+all:: profile
+endif
+
+profile:: profile-clean
 	$(MAKE) PROFILE=GEN all
 	$(MAKE) PROFILE=GEN -j1 test
-endif
-endif
+	$(MAKE) PROFILE=GEN -j1 perf
+	$(MAKE) PROFILE=USE all
+
+profile-fast: profile-clean
+	$(MAKE) PROFILE=GEN all
+	$(MAKE) PROFILE=GEN -j1 perf
+	$(MAKE) PROFILE=USE all
+
 
 all:: $(ALL_PROGRAMS) $(SCRIPT_LIB) $(BUILT_INS) $(OTHER_PROGRAMS) GIT-BUILD-OPTIONS
 ifneq (,$X)
@@ -2337,6 +2352,12 @@ endif
 mergetools_instdir_SQ = $(subst ','\'',$(mergetools_instdir))
 
 install_bindir_programs := $(patsubst %,%$X,$(BINDIR_PROGRAMS_NEED_X)) $(BINDIR_PROGRAMS_NO_X)
+
+profile-install: profile
+	$(MAKE) install
+
+profile-fast-install: profile-fast
+	$(MAKE) install
 
 install: all
 	$(INSTALL) -d -m 755 '$(DESTDIR_SQ)$(bindir_SQ)'

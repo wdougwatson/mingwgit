@@ -1075,7 +1075,7 @@ static int gitdiff_index(const char *line, struct patch *patch)
 
 	line = ptr + 2;
 	ptr = strchr(line, ' ');
-	eol = strchr(line, '\n');
+	eol = strchrnul(line, '\n');
 
 	if (!ptr || eol < ptr)
 		ptr = eol;
@@ -2867,9 +2867,7 @@ static int apply_binary_fragment(struct image *img, struct patch *patch)
 	case BINARY_LITERAL_DEFLATED:
 		clear_image(img);
 		img->len = fragment->size;
-		img->buf = xmalloc(img->len+1);
-		memcpy(img->buf, fragment->patch, img->len);
-		img->buf[img->len] = '\0';
+		img->buf = xmemdupz(fragment->patch, img->len);
 		return 0;
 	}
 	return -1;

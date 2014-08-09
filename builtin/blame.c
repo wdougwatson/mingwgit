@@ -1371,11 +1371,8 @@ static struct commit_list *first_scapegoat(struct rev_info *revs, struct commit 
 
 static int num_scapegoats(struct rev_info *revs, struct commit *commit)
 {
-	int cnt;
 	struct commit_list *l = first_scapegoat(revs, commit);
-	for (cnt = 0; l; l = l->next)
-		cnt++;
-	return cnt;
+	return commit_list_count(l);
 }
 
 /* Distribute collected unsorted blames to the respected sorted lists
@@ -2287,7 +2284,6 @@ static struct commit *fake_working_tree_commit(struct diff_options *opt,
 	commit = alloc_commit_node();
 	commit->object.parsed = 1;
 	commit->date = now;
-	commit->object.type = OBJ_COMMIT;
 	parent_tail = &commit->parents;
 
 	if (!resolve_ref_unsafe("HEAD", head_sha1, 1, NULL))
@@ -2707,11 +2703,8 @@ parse_done:
 		die("revision walk setup failed");
 
 	if (is_null_sha1(sb.final->object.sha1)) {
-		char *buf;
 		o = sb.final->util;
-		buf = xmalloc(o->file.size + 1);
-		memcpy(buf, o->file.ptr, o->file.size + 1);
-		sb.final_buf = buf;
+		sb.final_buf = xmemdupz(o->file.ptr, o->file.size);
 		sb.final_buf_size = o->file.size;
 	}
 	else {

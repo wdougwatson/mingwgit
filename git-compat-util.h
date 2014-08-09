@@ -291,8 +291,10 @@ extern char *gitbasename(char *);
 #else
 #define NORETURN
 #define NORETURN_PTR
+#ifndef __GNUC__
 #ifndef __attribute__
 #define __attribute__(x)
+#endif
 #endif
 #endif
 
@@ -729,17 +731,6 @@ void git_qsort(void *base, size_t nmemb, size_t size,
 #endif
 #endif
 
-#if defined(__GNUC__) && defined(__x86_64__)
-#include <emmintrin.h>
-/*
- * This is the system memory page size; it's used so that we can read
- * outside the bounds of an allocation without segfaulting.
- */
-#ifndef PAGE_SIZE
-#define PAGE_SIZE 4096
-#endif
-#endif
-
 #ifdef UNRELIABLE_FSTAT
 #define fstat_is_reliable() 0
 #else
@@ -757,6 +748,10 @@ void git_qsort(void *base, size_t nmemb, size_t size,
 #else
 #define va_copy(dst, src) ((dst) = (src))
 #endif
+#endif
+
+#if defined(__GNUC__) || (_MSC_VER >= 1400)
+#define HAVE_VARIADIC_MACROS 1
 #endif
 
 /*
