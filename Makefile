@@ -551,6 +551,7 @@ PROGRAMS += $(patsubst %.o,git-%$X,$(PROGRAM_OBJS))
 
 TEST_PROGRAMS_NEED_X += test-chmtime
 TEST_PROGRAMS_NEED_X += test-ctype
+TEST_PROGRAMS_NEED_X += test-config
 TEST_PROGRAMS_NEED_X += test-date
 TEST_PROGRAMS_NEED_X += test-delta
 TEST_PROGRAMS_NEED_X += test-dump-cache-tree
@@ -1659,7 +1660,11 @@ endif
 profile:: profile-clean
 	$(MAKE) PROFILE=GEN all
 	$(MAKE) PROFILE=GEN -j1 test
-	$(MAKE) PROFILE=GEN -j1 perf
+	@if test -n "$$GIT_PERF_REPO" || test -d .git; then \
+		$(MAKE) PROFILE=GEN -j1 perf; \
+	else \
+		echo "Skipping profile of perf tests..."; \
+	fi
 	$(MAKE) PROFILE=USE all
 
 profile-fast: profile-clean
