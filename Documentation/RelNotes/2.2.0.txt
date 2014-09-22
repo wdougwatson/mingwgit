@@ -4,6 +4,12 @@ Git v2.2 Release Notes
 Updates since v2.1
 ------------------
 
+Ports
+
+ * Building on older MacOS X systems automatically sets
+   the necessary NO_APPLE_COMMON_CRYPTO build-time option.
+
+
 UI, Workflows & Features
 
  * "git config --edit --global" starts from a skeletal per-user
@@ -12,8 +18,43 @@ UI, Workflows & Features
    need for a later "Have you forgotten setting core.user?" and we
    can add more to the template as we gain more experience.
 
+ * "git stash list -p" used to be almost always a no-op because each
+   stash entry is represented as a merge commit.  It learned to show
+   the difference between the base commit version and the working tree
+   version, which is in line with what "git show" gives.
+
+ * Sometimes users want to report a bug they experience on their
+   repository, but they are not at liberty to share the contents of
+   the repository.  "fast-export" was taught an "--anonymize" option
+   to replace blob contents, names of people and paths and log
+   messages with bland and simple strings to help them.
+
+ * "log --date=iso" uses a slight variant of ISO 8601 format that is
+   made more human readable.  A new "--date=iso-strict" option gives
+   datetime output that is more strictly conformant.
+
+ * A broken reimplementation of Git could write an invalid index that
+   records both stage #0 and higher stage entries for the same path.
+   We now notice and reject such an index, as there is no sensible
+   fallback (we do not know if the broken tool wanted to resolve and
+   forgot to remove higher stage entries, or if it wanted to unresolve
+   and forgot to remove the stage#0 entry).
+
 
 Performance, Internal Implementation, etc.
+
+ * The API to manipulate the "refs" is currently undergoing a revamp
+   to make it more transactional, with the eventual goal to allow
+   all-or-none atomic updates and migrating the storage to something
+   other than the traditional filesystem based one (e.g. databases).
+
+ * We no longer attempt to keep track of individual dependencies to
+   the header files in the build procedure, relying on automated
+   dependency generation support from modern compilers.
+
+ * In tests, we have been using NOT_{MINGW,CYGWIN} test prerequisites
+   long before negated prerequisites e.g. !MINGW were invented.
+   The former has been converted to the latter to avoid confusion.
 
  * Looking up remotes configuration in a repository with very many
    remotes defined has been optimized.
@@ -23,11 +64,28 @@ Performance, Internal Implementation, etc.
    to update the file again while still holding the lock, but the
    lockfile API lacked support for such an access pattern.
 
+ * The API to allocate the structure to keep track of commit
+   decoration has been updated to make it less cumbersome to use.
+
  * An in-core caching layer to let us avoid reading the same
-   configuration files number of times has been added.
+   configuration files number of times has been added.  A few commands
+   have been converted to use this subsystem.
 
  * Various code paths have been cleaned up and simplified by using
    "strbuf", "starts_with()", and "skip_prefix()" APIs more.
+
+ * A few codepaths that died when large blobs that would not fit in
+   core are involved in their operation have been taught to punt
+   instead, by e.g. marking too large a blob as not to be diffed.
+
+ * A few more code paths in "commit" and "checkout" have been taught
+   to repopulate the cache-tree in the index, to help speed up later
+   "write-tree" (used in "commit") and "diff-index --cached" (used in
+   "status").
+
+ * A common programming mistake to assign the same short option name
+   to two separate options is detected by parse_options() API to help
+   developers.
 
 
 Also contains various documentation updates and code clean-ups.
@@ -36,17 +94,78 @@ Also contains various documentation updates and code clean-ups.
 Fixes since v2.1
 ----------------
 
+Unless otherwise noted, all the fixes since v2.1 in the maintenance
+track are contained in this release (see the maintenance releases'
+notes for details).
+
  * "git log --pretty/format=" with an empty format string did not
    mean the more obvious "No output whatsoever" but "Use default
    format", which was counterintuitive.
-   (merge b9c7d6e jk/pretty-empty-format later to maint).
 
  * Implementations of "tar" that do not understand an extended pax
    header would extract the contents of it in a regular file; make
    sure the permission bits of this file follows the same tar.umask
    configuration setting.
 
+ * "git -c section.var command" and "git -c section.var= command"
+   should pass the configuration differently (the former should be a
+   boolean true, the latter should be an empty string).
 
-Unless otherwise noted, all the fixes since v2.1 in the maintenance
-track are contained in this release (see the maintenance releases'
-notes for details).
+ * Applying a patch not generated by Git in a subdirectory used to
+   check the whitespace breakage using the attributes for incorrect
+   paths. Also whitespace checks were performed even for paths
+   excluded via "git apply --exclude=<path>" mechanism.
+
+ * "git bundle create" with date-range specification were meant to
+   exclude tags outside the range, but it didn't.
+
+ * "git add x" where x that used to be a directory has become a
+   symbolic link to a directory misbehaved.
+
+ * The prompt script checked $GIT_DIR/ref/stash file to see if there
+   is a stash, which was a no-no.
+
+ * Pack-protocol documentation had a minor typo.
+
+ * "git checkout -m" did not switch to another branch while carrying
+   the local changes forward when a path was deleted from the index.
+
+ * With sufficiently long refnames, "git fast-import" could have
+   overflown an on-stack buffer.
+
+ * After "pack-refs --prune" packed refs at the top-level, it failed
+   to prune them.
+
+ * Progress output from "git gc --auto" was visible in "git fetch -q".
+
+ * We used to pass -1000 to poll(2), expecting it to also mean "no
+   timeout", which should be spelled as -1.
+
+ * "git rebase" documentation was unclear that it is required to
+   specify on what <upstream> the rebase is to be done when telling it
+   to first check out <branch>.
+   (merge 95c6826 so/rebase-doc later to maint).
+
+ * "git push" over HTTP transport had an artificial limit on number of
+   refs that can be pushed imposed by the command line length.
+   (merge 26be19b jk/send-pack-many-refspecs later to maint).
+
+ * When receiving an invalid pack stream that records the same object
+   twice, multiple threads got confused due to a race.
+   (merge ab791dd jk/index-pack-threading-races later to maint).
+
+ * An attempt to remove the entire tree in the "git fast-import" input
+   stream caused it to misbehave.
+   (merge 2668d69 mb/fast-import-delete-root later to maint).
+
+ * Reachability check (used in "git prune" and friends) did not add a
+   detached HEAD as a starting point to traverse objects still in use.
+   (merge c40fdd0 mk/reachable-protect-detached-head later to maint).
+
+ * "git config --add section.var val" used to lose existing
+   section.var whose value was an empty string.
+   (merge c1063be ta/config-add-to-empty-or-true-fix later to maint).
+
+ * "git fsck" failed to report that it found corrupt objects via its
+   exit status in some cases.
+   (merge 30d1038 jk/fsck-exit-code-fix later to maint).

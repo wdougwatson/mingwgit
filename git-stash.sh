@@ -297,7 +297,7 @@ have_stash () {
 
 list_stash () {
 	have_stash || return 0
-	git log --format="%gd: %gs" -g "$@" $ref_stash --
+	git log --format="%gd: %gs" -g --first-parent -m "$@" $ref_stash --
 }
 
 show_stash () {
@@ -394,7 +394,7 @@ parse_flags_and_rev()
 
 	REV=$(git rev-parse --quiet --symbolic --verify "$1" 2>/dev/null) || {
 		reference="$1"
-		die "$(eval_gettext "\$reference is not valid reference")"
+		die "$(eval_gettext "\$reference is not a valid reference")"
 	}
 
 	i_commit=$(git rev-parse --quiet --verify "$REV^2" 2>/dev/null) &&

@@ -1922,7 +1922,8 @@ int stat_tracking_info(struct branch *branch, int *num_ours, int *num_theirs)
 
 	init_revisions(&revs, NULL);
 	setup_revisions(rev_argc, rev_argv, &revs, NULL);
-	prepare_revision_walk(&revs);
+	if (prepare_revision_walk(&revs))
+		die("revision walk setup failed");
 
 	/* ... and count the commits on each side. */
 	*num_ours = 0;
@@ -1949,7 +1950,7 @@ int stat_tracking_info(struct branch *branch, int *num_ours, int *num_theirs)
 int format_tracking_info(struct branch *branch, struct strbuf *sb)
 {
 	int ours, theirs;
-	const char *base;
+	char *base;
 	int upstream_is_gone = 0;
 
 	switch (stat_tracking_info(branch, &ours, &theirs)) {
@@ -1965,8 +1966,7 @@ int format_tracking_info(struct branch *branch, struct strbuf *sb)
 		break;
 	}
 
-	base = branch->merge[0]->dst;
-	base = shorten_unambiguous_ref(base, 0);
+	base = shorten_unambiguous_ref(branch->merge[0]->dst, 0);
 	if (upstream_is_gone) {
 		strbuf_addf(sb,
 			_("Your branch is based on '%s', but the upstream is gone.\n"),
@@ -2012,6 +2012,7 @@ int format_tracking_info(struct branch *branch, struct strbuf *sb)
 			strbuf_addf(sb,
 				_("  (use \"git pull\" to merge the remote branch into yours)\n"));
 	}
+	free(base);
 	return 1;
 }
 

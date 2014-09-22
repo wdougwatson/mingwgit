@@ -219,29 +219,22 @@ static void get_idx_file(char *name)
 	send_local_file("application/x-git-packed-objects-toc", name);
 }
 
-static int http_config(const char *var, const char *value, void *cb)
+static void http_config(void)
 {
-	const char *p;
+	int i, value = 0;
+	struct strbuf var = STRBUF_INIT;
 
-	if (!strcmp(var, "http.getanyfile")) {
-		getanyfile = git_config_bool(var, value);
-		return 0;
+	git_config_get_bool("http.getanyfile", &getanyfile);
+
+	for (i = 0; i < ARRAY_SIZE(rpc_service); i++) {
+		struct rpc_service *svc = &rpc_service[i];
+		strbuf_addf(&var, "http.%s", svc->config_name);
+		if (!git_config_get_bool(var.buf, &value))
+			svc->enabled = value;
+		strbuf_reset(&var);
 	}
 
-	if (skip_prefix(var, "http.", &p)) {
-		int i;
-
-		for (i = 0; i < ARRAY_SIZE(rpc_service); i++) {
-			struct rpc_service *svc = &rpc_service[i];
-			if (!strcmp(p, svc->config_name)) {
-				svc->enabled = git_config_bool(var, value);
-				return 0;
-			}
-		}
-	}
-
-	/* we are not interested in parsing any other configuration here */
-	return 0;
+	strbuf_release(&var);
 }
 
 static struct rpc_service *select_service(const char *name)
@@ -323,7 +316,7 @@ static void run_service(const char **argv)
 	const char *host = getenv("REMOTE_ADDR");
 	struct argv_array env = ARGV_ARRAY_INIT;
 	int gzipped_request = 0;
-	struct child_process cld;
+	struct child_process cld = CHILD_PROCESS_INIT;
 
 	if (encoding && !strcmp(encoding, "gzip"))
 		gzipped_request = 1;
@@ -341,7 +334,6 @@ static void run_service(const char **argv)
 		argv_array_pushf(&env, "GIT_COMMITTER_EMAIL=%s@http.%s",
 				 user, host);
 
-	memset(&cld, 0, sizeof(cld));
 	cld.argv = argv;
 	cld.env = env.argv;
 	if (gzipped_request)
@@ -627,7 +619,7 @@ int main(int argc, char **argv)
 	    access("git-daemon-export-ok", F_OK) )
 		not_found("Repository not exported: '%s'", dir);
 
-	git_config(http_config, NULL);
+	http_config();
 	cmd->imp(cmd_arg);
 	return 0;
 }

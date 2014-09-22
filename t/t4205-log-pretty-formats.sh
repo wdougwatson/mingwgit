@@ -431,6 +431,21 @@ EOF
 	test_cmp expected actual
 '
 
+test_expect_success 'strbuf_utf8_replace() not producing NUL' '
+	git log --color --pretty="tformat:%<(10,trunc)%s%>>(10,ltrunc)%C(auto)%d" |
+		test_decode_color |
+		nul_to_q >actual &&
+	! grep Q actual
+'
+
+# ISO strict date format
+test_expect_success 'ISO and ISO-strict date formats display the same values' '
+	git log --format=%ai%n%ci |
+	sed -e "s/ /T/; s/ //; s/..\$/:&/" >expected &&
+	git log --format=%aI%n%cI >actual &&
+	test_cmp expected actual
+'
+
 # get new digests (with no abbreviations)
 head1=$(git rev-parse --verify HEAD~0) &&
 head2=$(git rev-parse --verify HEAD~1) &&
