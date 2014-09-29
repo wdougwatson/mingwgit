@@ -482,7 +482,7 @@ extern int daemonize(void);
 				alloc = (nr); \
 			else \
 				alloc = alloc_nr(alloc); \
-			x = xrealloc((x), alloc * sizeof(*(x))); \
+			REALLOC_ARRAY(x, alloc); \
 		} \
 	} while (0)
 
@@ -1430,6 +1430,8 @@ extern const char *git_mailmap_blob;
 
 /* IO helper functions */
 extern void maybe_flush_or_die(FILE *, const char *);
+__attribute__((format (printf, 2, 3)))
+extern void fprintf_or_die(FILE *, const char *fmt, ...);
 extern int copy_fd(int ifd, int ofd);
 extern int copy_file(const char *dst, const char *src, int mode);
 extern int copy_file_with_time(const char *dst, const char *src, int mode);
