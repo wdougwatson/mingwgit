@@ -3,8 +3,9 @@
  * Fredrik Kuivinen.
  * The thieves were Alex Riesen and Johannes Schindelin, in June/July 2006
  */
-#include "advice.h"
 #include "cache.h"
+#include "advice.h"
+#include "lockfile.h"
 #include "cache-tree.h"
 #include "commit.h"
 #include "blob.h"

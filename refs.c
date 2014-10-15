@@ -1,4 +1,5 @@
 #include "cache.h"
+#include "lockfile.h"
 #include "refs.h"
 #include "object.h"
 #include "tag.h"
@@ -79,7 +80,8 @@ out:
 		if (refname[1] == '\0')
 			return -1; /* Component equals ".". */
 	}
-	if (cp - refname >= 5 && !memcmp(cp - 5, ".lock", 5))
+	if (cp - refname >= LOCK_SUFFIX_LEN &&
+	    !memcmp(cp - LOCK_SUFFIX_LEN, LOCK_SUFFIX, LOCK_SUFFIX_LEN))
 		return -1; /* Refname ends with ".lock". */
 	return cp - refname;
 }
@@ -2191,7 +2193,7 @@ static struct ref_lock *lock_ref_sha1_basic(const char *refname,
 	lflags = 0;
 	if (flags & REF_NODEREF) {
 		refname = orig_refname;
-		lflags |= LOCK_NODEREF;
+		lflags |= LOCK_NO_DEREF;
 	}
 	lock->ref_name = xstrdup(refname);
 	lock->orig_ref_name = xstrdup(orig_refname);
@@ -2225,7 +2227,7 @@ static struct ref_lock *lock_ref_sha1_basic(const char *refname,
 			 */
 			goto retry;
 		else
-			unable_to_lock_index_die(ref_file, errno);
+			unable_to_lock_die(ref_file, errno);
 	}
 	return old_sha1 ? verify_lock(lock, old_sha1, mustexist) : lock;
 
@@ -2307,16 +2309,13 @@ int commit_packed_refs(void)
 	if (!packed_ref_cache->lock)
 		die("internal error: packed-refs not locked");
 
-	out = fdopen(packed_ref_cache->lock->fd, "w");
+	out = fdopen_lock_file(packed_ref_cache->lock, "w");
 	if (!out)
 		die_errno("unable to fdopen packed-refs descriptor");
 
 	fprintf_or_die(out, "%s", PACKED_REFS_HEADER);
 	do_for_each_entry_in_dir(get_packed_ref_dir(packed_ref_cache),
 				 0, write_packed_entry_fn, out);
-	if (fclose(out))
-		die_errno("write error");
-	packed_ref_cache->lock->fd = -1;
 
 	if (commit_lock_file(packed_ref_cache->lock)) {
 		save_errno = errno;
@@ -2601,12 +2600,13 @@ int repack_without_refs(const char **refnames, int n, struct strbuf *err)
 static int delete_ref_loose(struct ref_lock *lock, int flag)
 {
 	if (!(flag & REF_ISPACKED) || flag & REF_ISSYMREF) {
-		/* loose */
-		int err, i = strlen(lock->lk->filename) - 5; /* .lock */
-
-		lock->lk->filename[i] = 0;
-		err = unlink_or_warn(lock->lk->filename);
-		lock->lk->filename[i] = '.';
+		/*
+		 * loose.  The loose file name is the same as the
+		 * lockfile name, minus ".lock":
+		 */
+		char *loose_filename = get_locked_file_path(lock->lk);
+		int err = unlink_or_warn(loose_filename);
+		free(loose_filename);
 		if (err && errno != ENOENT)
 			return 1;
 	}
@@ -2968,7 +2968,7 @@ int write_ref_sha1(struct ref_lock *lock,
 	    write_in_full(lock->lock_fd, &term, 1) != 1 ||
 	    close_ref(lock) < 0) {
 		int save_errno = errno;
-		error("Couldn't write %s", lock->lk->filename);
+		error("Couldn't write %s", lock->lk->filename.buf);
 		unlock_ref(lock);
 		errno = save_errno;
 		return -1;
