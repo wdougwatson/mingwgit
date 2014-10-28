@@ -9,6 +9,8 @@ Ports
  * Building on older MacOS X systems automatically sets
    the necessary NO_APPLE_COMMON_CRYPTO build-time option.
 
+ * The support to build with NO_PTHREADS has been resurrected.
+
 
 UI, Workflows & Features
 
@@ -42,6 +44,15 @@ UI, Workflows & Features
    forgot to remove higher stage entries, or if it wanted to unresolve
    and forgot to remove the stage#0 entry).
 
+ * The temporary files "git mergetool" uses are named to avoid too
+   many dots in them (e.g. a temporary file for "hello.c" used to be
+   named e.g. "hello.BASE.4321.c" but now uses underscore instead,
+   e.g. "hello_BASE_4321.c").
+
+ * The temporary files "git mergetools" uses can be placed in a newly
+   creted temporary directory, instead of the current directory, by
+   setting the mergetool.writeToTemp configuration variable.
+
  * The "pre-receive" and "post-receive" hooks are no longer required
    to consume their input fully (not following this requirement used
    to result in intermittent errors in "git push").
@@ -68,10 +79,10 @@ UI, Workflows & Features
 
 Performance, Internal Implementation, etc.
 
- * The API to manipulate the "refs" is currently undergoing a revamp
-   to make it more transactional, with the eventual goal to allow
-   all-or-none atomic updates and migrating the storage to something
-   other than the traditional filesystem based one (e.g. databases).
+ * The API to manipulate the "refs" has been restructured to make it
+   more transactional, with the eventual goal to allow all-or-none
+   atomic updates and migrating the storage to something other than
+   the traditional filesystem based one (e.g. databases).
 
  * The lockfile API and its users have been cleaned up.
 
@@ -134,6 +145,10 @@ Performance, Internal Implementation, etc.
 
  * The scripts in the test suite can be run with "-x" option to show
    a shell-trace of each command run in them.
+
+ * The "run-command" API learned to manage the argv and environment
+   array for child process, alleviating the need for the callers to
+   allocate and deallocate them.
 
 
 Also contains various documentation updates and code clean-ups.
@@ -248,3 +263,12 @@ notes for details).
  * "gitweb" used deprecated CGI::startfrom, which was removed from
    CGI.pm as of 4.04; use CGI::start_from instead.
    (merge 4750f4b rm/gitweb-start-form later to maint).
+
+ * Newer versions of 'meld' breaks the auto-detection we use to see if
+   they are new enough to support the `--output` option.
+   (merge b12d045 da/mergetool-meld later to maint).
+
+ * "git pack-objects" forgot to disable the codepath to generate
+   object recheability bitmap when it needs to split the resulting
+   pack.
+   (merge 2113471 jk/pack-objects-no-bitmap-when-splitting later to maint).
