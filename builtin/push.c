@@ -161,7 +161,7 @@ static const char message_detached_head_die[] =
 	   "    git push %s HEAD:<name-of-remote-branch>\n");
 
 static void setup_push_upstream(struct remote *remote, struct branch *branch,
-				int triangular)
+				int triangular, int simple)
 {
 	struct strbuf refspec = STRBUF_INIT;
 
@@ -184,7 +184,7 @@ static void setup_push_upstream(struct remote *remote, struct branch *branch,
 		      "to update which remote branch."),
 		    remote->name, branch->name);
 
-	if (push_default == PUSH_DEFAULT_SIMPLE) {
+	if (simple) {
 		/* Additional safety */
 		if (strcmp(branch->refname, branch->merge[0]->src))
 			die_push_simple(branch, remote);
@@ -257,11 +257,11 @@ static void setup_default_push_refspecs(struct remote *remote)
 		if (triangular)
 			setup_push_current(remote, branch);
 		else
-			setup_push_upstream(remote, branch, triangular);
+			setup_push_upstream(remote, branch, triangular, 1);
 		break;
 
 	case PUSH_DEFAULT_UPSTREAM:
-		setup_push_upstream(remote, branch, triangular);
+		setup_push_upstream(remote, branch, triangular, 0);
 		break;
 
 	case PUSH_DEFAULT_CURRENT:
@@ -503,7 +503,7 @@ int cmd_push(int argc, const char **argv, const char *prefix)
 		  0, CAS_OPT_NAME, &cas, N_("refname>:<expect"),
 		  N_("require old value of ref to be at this value"),
 		  PARSE_OPT_OPTARG, parseopt_push_cas_option },
-		{ OPTION_CALLBACK, 0, "recurse-submodules", &flags, N_("check"),
+		{ OPTION_CALLBACK, 0, "recurse-submodules", &flags, "check|on-demand",
 			N_("control recursive pushing of submodules"),
 			PARSE_OPT_OPTARG, option_parse_recurse_submodules },
 		OPT_BOOL( 0 , "thin", &thin, N_("use thin pack")),
