@@ -1068,8 +1068,10 @@ static const char PACKED_REFS_HEADER[] =
  * Return a pointer to the refname within the line (null-terminated),
  * or NULL if there was a problem.
  */
-static const char *parse_ref_line(char *line, unsigned char *sha1)
+static const char *parse_ref_line(struct strbuf *line, unsigned char *sha1)
 {
+	const char *ref;
+
 	/*
 	 * 42: the answer to everything.
 	 *
@@ -1078,22 +1080,23 @@ static const char *parse_ref_line(char *line, unsigned char *sha1)
 	 *  +1 (space in between hex and name)
 	 *  +1 (newline at the end of the line)
 	 */
-	int len = strlen(line) - 42;
+	if (line->len <= 42)
+		return NULL;
 
-	if (len <= 0)
+	if (get_sha1_hex(line->buf, sha1) < 0)
 		return NULL;
-	if (get_sha1_hex(line, sha1) < 0)
+	if (!isspace(line->buf[40]))
 		return NULL;
-	if (!isspace(line[40]))
-		return NULL;
-	line += 41;
-	if (isspace(*line))
-		return NULL;
-	if (line[len] != '\n')
-		return NULL;
-	line[len] = 0;
 
-	return line;
+	ref = line->buf + 41;
+	if (isspace(*ref))
+		return NULL;
+
+	if (line->buf[line->len - 1] != '\n')
+		return NULL;
+	line->buf[--line->len] = 0;
+
+	return ref;
 }
 
 /*
@@ -1126,16 +1129,15 @@ static const char *parse_ref_line(char *line, unsigned char *sha1)
 static void read_packed_refs(FILE *f, struct ref_dir *dir)
 {
 	struct ref_entry *last = NULL;
-	char refline[PATH_MAX];
+	struct strbuf line = STRBUF_INIT;
 	enum { PEELED_NONE, PEELED_TAGS, PEELED_FULLY } peeled = PEELED_NONE;
 
-	while (fgets(refline, sizeof(refline), f)) {
+	while (strbuf_getwholeline(&line, f, '\n') != EOF) {
 		unsigned char sha1[20];
 		const char *refname;
-		static const char header[] = "# pack-refs with:";
+		const char *traits;
 
-		if (!strncmp(refline, header, sizeof(header)-1)) {
-			const char *traits = refline + sizeof(header) - 1;
+		if (skip_prefix(line.buf, "# pack-refs with:", &traits)) {
 			if (strstr(traits, " fully-peeled "))
 				peeled = PEELED_FULLY;
 			else if (strstr(traits, " peeled "))
@@ -1144,7 +1146,7 @@ static void read_packed_refs(FILE *f, struct ref_dir *dir)
 			continue;
 		}
 
-		refname = parse_ref_line(refline, sha1);
+		refname = parse_ref_line(&line, sha1);
 		if (refname) {
 			int flag = REF_ISPACKED;
 
@@ -1160,10 +1162,10 @@ static void read_packed_refs(FILE *f, struct ref_dir *dir)
 			continue;
 		}
 		if (last &&
-		    refline[0] == '^' &&
-		    strlen(refline) == PEELED_LINE_LENGTH &&
-		    refline[PEELED_LINE_LENGTH - 1] == '\n' &&
-		    !get_sha1_hex(refline + 1, sha1)) {
+		    line.buf[0] == '^' &&
+		    line.len == PEELED_LINE_LENGTH &&
+		    line.buf[PEELED_LINE_LENGTH - 1] == '\n' &&
+		    !get_sha1_hex(line.buf + 1, sha1)) {
 			hashcpy(last->u.value.peeled, sha1);
 			/*
 			 * Regardless of what the file header said,
@@ -1173,6 +1175,8 @@ static void read_packed_refs(FILE *f, struct ref_dir *dir)
 			last->flag |= REF_KNOWS_PEELED;
 		}
 	}
+
+	strbuf_release(&line);
 }
 
 /*
@@ -2318,6 +2322,7 @@ static struct ref_lock *lock_ref_sha1_basic(const char *refname,
 
 	lock->lock_fd = hold_lock_file_for_update(lock->lk, ref_file, lflags);
 	if (lock->lock_fd < 0) {
+		last_errno = errno;
 		if (errno == ENOENT && --attempts_remaining > 0)
 			/*
 			 * Maybe somebody just deleted one of the
@@ -2325,8 +2330,13 @@ static struct ref_lock *lock_ref_sha1_basic(const char *refname,
 			 * again:
 			 */
 			goto retry;
-		else
-			unable_to_lock_die(ref_file, errno);
+		else {
+			struct strbuf err = STRBUF_INIT;
+			unable_to_lock_message(ref_file, errno, &err);
+			error("%s", err.buf);
+			strbuf_reset(&err);
+			goto error_return;
+		}
 	}
 	return old_sha1 ? verify_lock(lock, old_sha1, mustexist) : lock;
 
@@ -2639,22 +2649,25 @@ static int curate_packed_ref_fn(struct ref_entry *entry, void *cb_data)
 	return 0;
 }
 
-int repack_without_refs(const char **refnames, int n, struct strbuf *err)
+int repack_without_refs(struct string_list *refnames, struct strbuf *err)
 {
 	struct ref_dir *packed;
 	struct string_list refs_to_delete = STRING_LIST_INIT_DUP;
-	struct string_list_item *ref_to_delete;
-	int i, ret, removed = 0;
+	struct string_list_item *refname, *ref_to_delete;
+	int ret, needs_repacking = 0, removed = 0;
 
 	assert(err);
 
 	/* Look for a packed ref */
-	for (i = 0; i < n; i++)
-		if (get_packed_ref(refnames[i]))
+	for_each_string_list_item(refname, refnames) {
+		if (get_packed_ref(refname->string)) {
+			needs_repacking = 1;
 			break;
+		}
+	}
 
 	/* Avoid locking if we have nothing to do */
-	if (i == n)
+	if (!needs_repacking)
 		return 0; /* no refname exists in packed refs */
 
 	if (lock_packed_refs(0)) {
@@ -2664,8 +2677,8 @@ int repack_without_refs(const char **refnames, int n, struct strbuf *err)
 	packed = get_packed_refs(&ref_cache);
 
 	/* Remove refnames from the cache */
-	for (i = 0; i < n; i++)
-		if (remove_entry(packed, refnames[i]) != -1)
+	for_each_string_list_item(refname, refnames)
+		if (remove_entry(packed, refname->string) != -1)
 			removed = 1;
 	if (!removed) {
 		/*
@@ -3404,29 +3417,54 @@ int for_each_reflog_ent_reverse(const char *refname, each_reflog_ent_fn fn, void
 
 			bp = find_beginning_of_line(buf, scanp);
 
-			if (*bp != '\n') {
-				strbuf_splice(&sb, 0, 0, buf, endp - buf);
-				if (pos)
-					break; /* need to fill another block */
-				scanp = buf - 1; /* leave loop */
-			} else {
+			if (*bp == '\n') {
 				/*
-				 * (bp + 1) thru endp is the beginning of the
-				 * current line we have in sb
+				 * The newline is the end of the previous line,
+				 * so we know we have complete line starting
+				 * at (bp + 1). Prefix it onto any prior data
+				 * we collected for the line and process it.
 				 */
 				strbuf_splice(&sb, 0, 0, bp + 1, endp - (bp + 1));
 				scanp = bp;
 				endp = bp + 1;
-			}
-			ret = show_one_reflog_ent(&sb, fn, cb_data);
-			strbuf_reset(&sb);
-			if (ret)
+				ret = show_one_reflog_ent(&sb, fn, cb_data);
+				strbuf_reset(&sb);
+				if (ret)
+					break;
+			} else if (!pos) {
+				/*
+				 * We are at the start of the buffer, and the
+				 * start of the file; there is no previous
+				 * line, and we have everything for this one.
+				 * Process it, and we can end the loop.
+				 */
+				strbuf_splice(&sb, 0, 0, buf, endp - buf);
+				ret = show_one_reflog_ent(&sb, fn, cb_data);
+				strbuf_reset(&sb);
 				break;
+			}
+
+			if (bp == buf) {
+				/*
+				 * We are at the start of the buffer, and there
+				 * is more file to read backwards. Which means
+				 * we are in the middle of a line. Note that we
+				 * may get here even if *bp was a newline; that
+				 * just means we are at the exact end of the
+				 * previous line, rather than some spot in the
+				 * middle.
+				 *
+				 * Save away what we have to be combined with
+				 * the data from the next read.
+				 */
+				strbuf_splice(&sb, 0, 0, buf, endp - buf);
+				break;
+			}
 		}
 
 	}
 	if (!ret && sb.len)
-		ret = show_one_reflog_ent(&sb, fn, cb_data);
+		die("BUG: reverse reflog parser had leftover data");
 
 	fclose(logfp);
 	strbuf_release(&sb);
@@ -3738,10 +3776,11 @@ static int ref_update_reject_duplicates(struct ref_update **updates, int n,
 int ref_transaction_commit(struct ref_transaction *transaction,
 			   struct strbuf *err)
 {
-	int ret = 0, delnum = 0, i;
-	const char **delnames;
+	int ret = 0, i;
 	int n = transaction->nr;
 	struct ref_update **updates = transaction->updates;
+	struct string_list refs_to_delete = STRING_LIST_INIT_NODUP;
+	struct string_list_item *ref_to_delete;
 
 	assert(err);
 
@@ -3752,9 +3791,6 @@ int ref_transaction_commit(struct ref_transaction *transaction,
 		transaction->state = REF_TRANSACTION_CLOSED;
 		return 0;
 	}
-
-	/* Allocate work space */
-	delnames = xmalloc(sizeof(*delnames) * n);
 
 	/* Copy, sort, and reject duplicate refs */
 	qsort(updates, n, sizeof(*updates), ref_update_compare);
@@ -3815,16 +3851,17 @@ int ref_transaction_commit(struct ref_transaction *transaction,
 			}
 
 			if (!(update->flags & REF_ISPRUNING))
-				delnames[delnum++] = update->lock->ref_name;
+				string_list_append(&refs_to_delete,
+						   update->lock->ref_name);
 		}
 	}
 
-	if (repack_without_refs(delnames, delnum, err)) {
+	if (repack_without_refs(&refs_to_delete, err)) {
 		ret = TRANSACTION_GENERIC_ERROR;
 		goto cleanup;
 	}
-	for (i = 0; i < delnum; i++)
-		unlink_or_warn(git_path("logs/%s", delnames[i]));
+	for_each_string_list_item(ref_to_delete, &refs_to_delete)
+		unlink_or_warn(git_path("logs/%s", ref_to_delete->string));
 	clear_loose_ref_cache(&ref_cache);
 
 cleanup:
@@ -3833,7 +3870,7 @@ cleanup:
 	for (i = 0; i < n; i++)
 		if (updates[i]->lock)
 			unlock_ref(updates[i]->lock);
-	free(delnames);
+	string_list_clear(&refs_to_delete, 0);
 	return ret;
 }
 

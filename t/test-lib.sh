@@ -140,6 +140,9 @@ else
 	}
 fi
 
+: ${ASAN_OPTIONS=detect_leaks=0}
+export ASAN_OPTIONS
+
 # Protect ourselves from common misconfiguration to export
 # CDPATH into the environment
 unset CDPATH
@@ -169,7 +172,11 @@ _z40=0000000000000000000000000000000000000000
 LF='
 '
 
-export _x05 _x40 _z40 LF
+# UTF-8 ZERO WIDTH NON-JOINER, which HFS+ ignores
+# when case-folding filenames
+u200c=$(printf '\342\200\214')
+
+export _x05 _x40 _z40 LF u200c
 
 # Each test should start with something like this, after copyright notices:
 #

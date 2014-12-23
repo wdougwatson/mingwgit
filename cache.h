@@ -65,13 +65,6 @@ unsigned long git_deflate_bound(git_zstream *, unsigned long);
  *
  * The value 0160000 is not normally a valid mode, and
  * also just happens to be S_IFDIR + S_IFLNK
- *
- * NOTE! We *really* shouldn't depend on the S_IFxxx macros
- * always having the same values everywhere. We should use
- * our internal git values for these things, and then we can
- * translate that to the OS-specific value. It just so
- * happens that everybody shares the same bit representation
- * in the UNIX world (and apparently wider too..)
  */
 #define S_IFGITLINK	0160000
 #define S_ISGITLINK(m)	(((m) & S_IFMT) == S_IFGITLINK)
@@ -617,6 +610,8 @@ extern int fsync_object_files;
 extern int core_preload_index;
 extern int core_apply_sparse_checkout;
 extern int precomposed_unicode;
+extern int protect_hfs;
+extern int protect_ntfs;
 
 /*
  * The character that begins a commented line in user-editable file
@@ -831,6 +826,7 @@ int normalize_path_copy(char *dst, const char *src);
 int longest_ancestor_length(const char *path, struct string_list *prefixes);
 char *strip_path_suffix(const char *path, const char *suffix);
 int daemon_avoid_alias(const char *path);
+extern int is_ntfs_dotgit(const char *name);
 
 /* object replacement */
 #define LOOKUP_REPLACE_OBJECT 1
