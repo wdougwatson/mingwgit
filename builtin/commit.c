@@ -34,12 +34,12 @@
 #include "mailmap.h"
 
 static const char * const builtin_commit_usage[] = {
-	N_("git commit [options] [--] <pathspec>..."),
+	N_("git commit [<options>] [--] <pathspec>..."),
 	NULL
 };
 
 static const char * const builtin_status_usage[] = {
-	N_("git status [options] [--] <pathspec>..."),
+	N_("git status [<options>] [--] <pathspec>..."),
 	NULL
 };
 
@@ -559,20 +559,14 @@ static void set_ident_var(char **buf, char *val)
 	*buf = val;
 }
 
-static char *envdup(const char *var)
-{
-	const char *val = getenv(var);
-	return val ? xstrdup(val) : NULL;
-}
-
 static void determine_author_info(struct strbuf *author_ident)
 {
 	char *name, *email, *date;
 	struct ident_split author;
 
-	name = envdup("GIT_AUTHOR_NAME");
-	email = envdup("GIT_AUTHOR_EMAIL");
-	date = envdup("GIT_AUTHOR_DATE");
+	name = xstrdup_or_null(getenv("GIT_AUTHOR_NAME"));
+	email = xstrdup_or_null(getenv("GIT_AUTHOR_EMAIL"));
+	date = xstrdup_or_null(getenv("GIT_AUTHOR_DATE"));
 
 	if (author_message) {
 		struct ident_split ident;
@@ -1056,7 +1050,7 @@ static const char *find_author_by_nickname(const char *name)
 		clear_mailmap(&mailmap);
 		return strbuf_detach(&buf, NULL);
 	}
-	die(_("No existing author found with '%s'"), name);
+	die(_("--author '%s' is not 'Name <email>' and matches no existing author"), name);
 }
 
 

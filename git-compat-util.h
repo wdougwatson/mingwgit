@@ -212,12 +212,15 @@ extern char *gitbasename(char *);
 #endif
 
 #ifndef NO_OPENSSL
+#ifdef __APPLE__
 #define __AVAILABILITY_MACROS_USES_AVAILABILITY 0
-#define MAC_OS_X_VERSION_MIN_REQUIRED MAC_OS_X_VERSION_10_6
+#include <AvailabilityMacros.h>
+#undef DEPRECATED_ATTRIBUTE
+#define DEPRECATED_ATTRIBUTE
+#undef __AVAILABILITY_MACROS_USES_AVAILABILITY
+#endif
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-#undef MAC_OS_X_VERSION_MIN_REQUIRED
-#undef __AVAILABILITY_MACROS_USES_AVAILABILITY
 #ifdef NO_HMAC_CTX_CLEANUP
 #define HMAC_CTX_cleanup HMAC_cleanup
 #endif
@@ -678,6 +681,11 @@ extern char *xgetcwd(void);
 
 #define REALLOC_ARRAY(x, alloc) (x) = xrealloc((x), (alloc) * sizeof(*(x)))
 
+static inline char *xstrdup_or_null(const char *str)
+{
+	return str ? xstrdup(str) : NULL;
+}
+
 static inline size_t xsize_t(off_t len)
 {
 	if (len > (size_t) len)
@@ -868,6 +876,10 @@ struct tm *git_gmtime(const time_t *);
 struct tm *git_gmtime_r(const time_t *, struct tm *);
 #define gmtime git_gmtime
 #define gmtime_r git_gmtime_r
+#endif
+
+#if !defined(USE_PARENS_AROUND_GETTEXT_N) && defined(__GNUC__)
+#define USE_PARENS_AROUND_GETTEXT_N 1
 #endif
 
 #endif

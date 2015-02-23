@@ -975,8 +975,8 @@ struct ref *copy_ref(const struct ref *ref)
 	cpy = xmalloc(sizeof(struct ref) + len + 1);
 	memcpy(cpy, ref, sizeof(struct ref) + len + 1);
 	cpy->next = NULL;
-	cpy->symref = ref->symref ? xstrdup(ref->symref) : NULL;
-	cpy->remote_status = ref->remote_status ? xstrdup(ref->remote_status) : NULL;
+	cpy->symref = xstrdup_or_null(ref->symref);
+	cpy->remote_status = xstrdup_or_null(ref->remote_status);
 	cpy->peer_ref = copy_ref(ref->peer_ref);
 	return cpy;
 }
@@ -2156,7 +2156,7 @@ struct ref *get_stale_heads(struct refspec *refs, int ref_count, struct ref *fet
 /*
  * Compare-and-swap
  */
-void clear_cas_option(struct push_cas_option *cas)
+static void clear_cas_option(struct push_cas_option *cas)
 {
 	int i;
 

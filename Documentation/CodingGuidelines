@@ -328,9 +328,14 @@ For C programs:
 
  - When you come up with an API, document it.
 
- - The first #include in C files, except in platform specific
-   compat/ implementations, should be git-compat-util.h or another
-   header file that includes it, such as cache.h or builtin.h.
+ - The first #include in C files, except in platform specific compat/
+   implementations, must be either "git-compat-util.h", "cache.h" or
+   "builtin.h".  You do not have to include more than one of these.
+
+ - A C file must directly include the header files that declare the
+   functions and the types it uses, except for the functions and types
+   that are made available to it by including one of the header files
+   it must include by the previous rule.
 
  - If you are planning a new command, consider writing it in shell
    or perl first, so that changes in semantics can be easily
@@ -413,6 +418,29 @@ Error Messages
  - Say what the error is first ("cannot open %s", not "%s: cannot open")
 
 
+Externally Visible Names
+
+ - For configuration variable names, follow the existing convention:
+
+   . The section name indicates the affected subsystem.
+
+   . The subsection name, if any, indicates which of an unbounded set
+     of things to set the value for.
+
+   . The variable name describes the effect of tweaking this knob.
+
+   The section and variable names that consist of multiple words are
+   formed by concatenating the words without punctuations (e.g. `-`),
+   and are broken using bumpyCaps in documentation as a hint to the
+   reader.
+
+   When choosing the variable namespace, do not use variable name for
+   specifying possibly unbounded set of things, most notably anything
+   an end user can freely come up with (e.g. branch names).  Instead,
+   use subsection names or variable values, like the existing variable
+   branch.<name>.description does.
+
+
 Writing Documentation:
 
  Most (if not all) of the documentation pages are written in the
@@ -441,6 +469,10 @@ Writing Documentation:
    --sort=<key>
    --abbrev[=<n>]
 
+ If a placeholder has multiple words, they are separated by dashes:
+   <new-branch-name>
+   --template=<template-directory>
+
  Possibility of multiple occurrences is indicated by three dots:
    <file>...
    (One or more of <file>.)
@@ -457,12 +489,12 @@ Writing Documentation:
    (Zero or more of <patch>.  Note that the dots are inside, not
    outside the brackets.)
 
- Multiple alternatives are indicated with vertical bar:
+ Multiple alternatives are indicated with vertical bars:
    [-q | --quiet]
    [--utf8 | --no-utf8]
 
  Parentheses are used for grouping:
-   [(<rev>|<range>)...]
+   [(<rev> | <range>)...]
    (Any number of either <rev> or <range>.  Parens are needed to make
    it clear that "..." pertains to both <rev> and <range>.)
 

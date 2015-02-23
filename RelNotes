@@ -1,1 +1,171 @@
-Documentation/RelNotes/2.3.0.txt
+Git ???? Release Notes
+======================
+
+Updates since v2.3
+------------------
+
+Ports
+
+
+UI, Workflows & Features
+
+ * The command usage info strings given by "git cmd -h" and in
+   documentation have been tweaked for consistency.
+
+ * The "sync" subcommand of "git p4" now allows users to exclude
+   subdirectories like its "clone" subcommand does.
+
+ * "git log --invert-grep --grep=WIP" will show only commits that do
+   not have the string "WIP" in their messages.
+
+ * "git push" has been taught a "--atomic" option that makes push to
+   update more than one ref an "all-or-none" affair.
+
+ * Extending the "push to deploy" added in 2.3, the behaviour of "git
+   push" when updating the branch that is checked out can now be
+   tweaked by push-to-checkout hook.
+
+ * Using environment variable LANGUAGE and friends on the client side,
+   HTTP-based transports now send Accept-Language when making requests.
+
+
+Performance, Internal Implementation, Development Support etc.
+
+ * Implementation of N_() macro has been updated slightly to help us
+   detect mistakes.
+
+ * Implementation of "reflog expire" has been restructured to fit the
+   reflogs better with the recently updated ref API.
+
+
+Also contains various documentation updates and code clean-ups.
+
+
+Fixes since v2.3
+----------------
+
+Unless otherwise noted, all the fixes since v2.3 in the maintenance
+track are contained in this release (see the maintenance releases'
+notes for details).
+
+ * "git blame HEAD -- missing" failed to correctly say "HEAD" when it
+   tried to say "No such path 'missing' in HEAD".
+   (merge a46442f jk/blame-commit-label later to maint).
+
+ * "git rerere" (invoked internally from many mergy operations) did
+   not correctly signal errors when told to update the working tree
+   files and failed to do so for whatever reason.
+   (merge 89ea903 jn/rerere-fail-on-auto-update-failure later to maint).
+
+ * Setting diff.submodule to 'log' made "git format-patch" produce
+   broken patches.
+   (merge 339de50 dk/format-patch-ignore-diff-submodule later to maint).
+
+ * After attempting and failing a password-less authentication
+   (e.g. kerberos), libcURL refuses to fall back to password based
+   Basic authentication without a bit of help/encouragement.
+   (merge 4dbe664 bc/http-fallback-to-password-after-krb-fails later to maint).
+
+ * The "git push" documentation made the "--repo=<there>" option
+   easily misunderstood.
+   (merge 57b92a7 mg/push-repo-option-doc later to maint).
+
+ * Code to read branch name from various files in .git/ directory
+   would have misbehaved if the code to write them left an empty file.
+   (merge 66ec904 jk/status-read-branch-name-fix later to maint).
+
+ * A misspelled conditional that is always true has been fixed.
+   (merge 94ee8e2 jk/remote-curl-an-array-in-struct-cannot-be-null later to maint).
+
+ * The documentation incorrectly said that C(opy) and R(ename) are the
+   only ones that can be followed by the score number in the output in
+   the --raw format.
+   (merge ac1c2d9 jc/diff-format-doc later to maint).
+
+ * A broken pack .idx file in the receiving repository prevented the
+   dumb http transport from fetching a good copy of it from the other
+   side.
+   (merge 8b9c2dd jk/dumb-http-idx-fetch-fix later to maint).
+
+ * The error message from "git commit", when a non-existing author
+   name was given as value to the "--author=" parameter, has been
+   reworded to avoid misunderstanding.
+   (merge 1044b1f mg/commit-author-no-match-malformed-message later to maint).
+
+ * "git log --help" used to show rev-list options that are irrelevant
+   to the "log" command.
+   (merge 3cab02d jc/doc-log-rev-list-options later to maint).
+
+ * "git apply --whitespace=fix" used to under-allocate the memory when
+   the fix resulted in a longer text than the original patch.
+   (merge 407a792 jc/apply-ws-fix-expands later to maint).
+
+ * The interactive "show a list and let the user choose from it"
+   interface "add -i" used showed and prompted to the user even when
+   the candidate list was empty, against which the only "choice" the
+   user could have made was to choose nothing.
+   (merge a9c4641 ak/add-i-empty-candidates later to maint).
+
+ * The insn sheet "git rebase -i" creates did not fully honor
+   core.abbrev settings.
+   (merge edb72d5 ks/rebase-i-abbrev later to maint).
+
+ * "git fetch" over a remote-helper that cannot respond to "list"
+   command could not fetch from a symbolic reference e.g. HEAD.
+   (merge 33cae54 mh/deref-symref-over-helper-transport later to maint).
+
+ * "git push --signed" gave an incorrectly worded error message when
+   the other side did not support the capability.
+   (merge 45917f0 jc/push-cert later to maint).
+
+ * We didn't format an integer that wouldn't fit in "int" but in
+   "uintmax_t" correctly.
+   (merge d306f3d jk/decimal-width-for-uintmax later to maint).
+
+ * Reading configuration from a blob object, when it ends with a lone
+   CR, use to confuse the configuration parser.
+   (merge 1d0655c jk/config-no-ungetc-eof later to maint).
+
+ * The pack bitmap support did not build with older versions of GCC.
+   (merge bd4e882 jk/pack-bitmap later to maint).
+
+ * The documentation wasn't clear that "remote.<nick>.pushURL" and
+   "remote.<nick>.URL" are there to name the same repository accessed
+   via different transports, not two separate repositories.
+   (merge 697f652 jc/remote-set-url-doc later to maint).
+
+ * Older GnuPG implementations may not correctly import the keyring
+   material we prepare for the tests to use.
+   (merge 1f985d6 ch/new-gpg-drops-rfc-1991 later to maint).
+
+ * The credential helper for Windows (in contrib/) used to mishandle
+   a user name with an at-sign in it.
+   (merge 13d261e av/wincred-with-at-in-username-fix later to maint).
+
+ * Longstanding configuration variable naming rules has been added to
+   the documentation.
+   (merge 35840a3 jc/conf-var-doc later to maint).
+
+ * An earlier workaround to squelch unhelpful deprecation warnings
+   from the complier on Mac OSX unnecessarily set minimum required
+   version of the OS, which the user might want to raise (or lower)
+   for other reasons.
+   (merge 88c03eb es/squelch-openssl-warnings-on-macosx later to maint).
+
+ * Certain older vintages of cURL give irregular output from
+   "curl-config --vernum", which confused our build system.
+   (merge 3af6792 tc/curl-vernum-output-broken-in-7.11 later to maint).
+
+ * In v2.2.0, we broke "git prune" that runs in a repository that
+   borrows from an alternate object store.
+   (merge b0a4264 jk/prune-mtime later to maint).
+
+ * "git submodule add" failed to squash "path/to/././submodule" to
+   "path/to/submodule".
+   (merge 8196e72 ps/submodule-sanitize-path-upon-add later to maint).
+
+ * "git merge-file" did not work correctly in a subdirectory.
+   (merge 204a8ff ab/merge-file-prefix later to maint).
+
+ * "git blame" died, trying to free an uninitialized piece of memory.
+   (merge e600592 es/blame-commit-info-fix later to maint).

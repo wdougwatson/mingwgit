@@ -760,7 +760,7 @@ static int fetch_git(struct discovery *heads,
 
 	for (i = 0; i < nr_heads; i++) {
 		struct ref *ref = to_fetch[i];
-		if (!ref->name || !*ref->name)
+		if (!*ref->name)
 			die("cannot fetch by sha1 over smart http");
 		packet_buf_write(&preamble, "%s %s\n",
 				 sha1_to_hex(ref->old_sha1), ref->name);
@@ -961,6 +961,8 @@ int main(int argc, const char **argv)
 {
 	struct strbuf buf = STRBUF_INIT;
 	int nongit;
+
+	git_setup_gettext();
 
 	git_extract_argv0_path(argv[0]);
 	setup_git_directory_gently(&nongit);

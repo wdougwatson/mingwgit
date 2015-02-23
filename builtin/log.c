@@ -39,7 +39,7 @@ static const char *fmt_pretty;
 
 static const char * const builtin_log_usage[] = {
 	N_("git log [<options>] [<revision range>] [[--] <path>...]"),
-	N_("git show [options] <object>..."),
+	N_("git show [<options>] <object>..."),
 	NULL
 };
 
@@ -705,7 +705,7 @@ static int git_format_config(const char *var, const char *value, void *cb)
 		return 0;
 	}
 	if (!strcmp(var, "diff.color") || !strcmp(var, "color.diff") ||
-	    !strcmp(var, "color.ui")) {
+	    !strcmp(var, "color.ui") || !strcmp(var, "diff.submodule")) {
 		return 0;
 	}
 	if (!strcmp(var, "format.numbered")) {
@@ -1023,7 +1023,7 @@ static const char *set_outdir(const char *prefix, const char *output_directory)
 }
 
 static const char * const builtin_format_patch_usage[] = {
-	N_("git format-patch [options] [<since> | <revision range>]"),
+	N_("git format-patch [<options>] [<since> | <revision-range>]"),
 	NULL
 };
 

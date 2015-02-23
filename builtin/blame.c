@@ -27,12 +27,12 @@
 #include "line-range.h"
 #include "line-log.h"
 
-static char blame_usage[] = N_("git blame [options] [rev-opts] [rev] [--] file");
+static char blame_usage[] = N_("git blame [<options>] [<rev-opts>] [<rev>] [--] file");
 
 static const char *blame_opt_usage[] = {
 	blame_usage,
 	"",
-	N_("[rev-opts] are documented in git-rev-list(1)"),
+	N_("<rev-opts> are documented in git-rev-list(1)"),
 	NULL
 };
 
@@ -2085,7 +2085,6 @@ static void find_alignment(struct scoreboard *sb, int *option)
 
 	for (e = sb->ent; e; e = e->next) {
 		struct origin *suspect = e->suspect;
-		struct commit_info ci;
 		int num;
 
 		if (compute_auto_abbrev)
@@ -2096,6 +2095,7 @@ static void find_alignment(struct scoreboard *sb, int *option)
 		if (longest_file < num)
 			longest_file = num;
 		if (!(suspect->commit->object.flags & METAINFO_SHOWN)) {
+			struct commit_info ci;
 			suspect->commit->object.flags |= METAINFO_SHOWN;
 			get_commit_info(suspect->commit, &ci, 1);
 			if (*option & OUTPUT_SHOW_EMAIL)
@@ -2104,6 +2104,7 @@ static void find_alignment(struct scoreboard *sb, int *option)
 				num = utf8_strwidth(ci.author.buf);
 			if (longest_author < num)
 				longest_author = num;
+			commit_info_destroy(&ci);
 		}
 		num = e->s_lno + e->num_lines;
 		if (longest_src_lines < num)
@@ -2113,8 +2114,6 @@ static void find_alignment(struct scoreboard *sb, int *option)
 			longest_dst_lines = num;
 		if (largest_score < ent_score(sb, e))
 			largest_score = ent_score(sb, e);
-
-		commit_info_destroy(&ci);
 	}
 	max_orig_digits = decimal_width(longest_src_lines);
 	max_digits = decimal_width(longest_dst_lines);
@@ -2390,7 +2389,7 @@ static struct commit *fake_working_tree_commit(struct diff_options *opt,
 	return commit;
 }
 
-static const char *prepare_final(struct scoreboard *sb)
+static char *prepare_final(struct scoreboard *sb)
 {
 	int i;
 	const char *final_commit_name = NULL;
@@ -2415,10 +2414,10 @@ static const char *prepare_final(struct scoreboard *sb)
 		sb->final = (struct commit *) obj;
 		final_commit_name = revs->pending.objects[i].name;
 	}
-	return final_commit_name;
+	return xstrdup_or_null(final_commit_name);
 }
 
-static const char *prepare_initial(struct scoreboard *sb)
+static char *prepare_initial(struct scoreboard *sb)
 {
 	int i;
 	const char *final_commit_name = NULL;
@@ -2445,7 +2444,7 @@ static const char *prepare_initial(struct scoreboard *sb)
 	}
 	if (!final_commit_name)
 		die("No commit to dig down to?");
-	return final_commit_name;
+	return xstrdup(final_commit_name);
 }
 
 static int blame_copy_callback(const struct option *option, const char *arg, int unset)
@@ -2489,7 +2488,7 @@ int cmd_blame(int argc, const char **argv, const char *prefix)
 	struct origin *o;
 	struct blame_entry *ent = NULL;
 	long dashdash_pos, lno;
-	const char *final_commit_name = NULL;
+	char *final_commit_name = NULL;
 	enum object_type type;
 
 	static struct string_list range_list;
@@ -2785,6 +2784,8 @@ parse_done:
 		setup_pager();
 
 	assign_blame(&sb, opt);
+
+	free(final_commit_name);
 
 	if (incremental)
 		return 0;

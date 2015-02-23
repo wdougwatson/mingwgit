@@ -22,7 +22,7 @@ void set_alternate_shallow_file(const char *path, int override)
 	if (alternate_shallow_file && !override)
 		return;
 	free(alternate_shallow_file);
-	alternate_shallow_file = path ? xstrdup(path) : NULL;
+	alternate_shallow_file = xstrdup_or_null(path);
 }
 
 int register_shallow(const unsigned char *sha1)
@@ -137,7 +137,7 @@ struct commit_list *get_shallow_commits(struct object_array *heads, int depth,
 	return result;
 }
 
-void check_shallow_file_for_update(void)
+static void check_shallow_file_for_update(void)
 {
 	if (is_shallow == -1)
 		die("BUG: shallow must be initialized by now");
