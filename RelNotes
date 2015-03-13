@@ -6,6 +6,13 @@ Updates since v2.3
 
 Ports
 
+ * Our default I/O size (8 MiB) for large files was too large for some
+   platforms with smaller SSIZE_MAX, leading to read(2)/write(2)
+   failures.
+
+ * We did not check the curl library version before using
+   CURLOPT_PROXYAUTH feature that may not exist.
+
 
 UI, Workflows & Features
 
@@ -28,6 +35,14 @@ UI, Workflows & Features
  * Using environment variable LANGUAGE and friends on the client side,
    HTTP-based transports now send Accept-Language when making requests.
 
+ * "git send-email" used to accept a mistaken "y" (or "yes") as an
+   answer to "What encoding do you want to use [UTF-8]? " without
+   questioning.  Now it asks for confirmation when the answer looks
+   too short to be a valid encoding name.
+
+ * When "git apply --whitespace=fix" fixed whitespace errors in the
+   common context lines, the command reports that it did so.
+
 
 Performance, Internal Implementation, Development Support etc.
 
@@ -36,6 +51,45 @@ Performance, Internal Implementation, Development Support etc.
 
  * Implementation of "reflog expire" has been restructured to fit the
    reflogs better with the recently updated ref API.
+
+ * The transport-helper did not give transport options such as
+   verbosity, progress, cloning, etc. to import and export based
+   helpers, like it did for fetch and push based helpers, robbing them
+   the chance to honor the wish of the end-users better.
+
+ * The tests that wanted to see that file becomes unreadable after
+   running "chmod a-r file", and the tests that wanted to make sure it
+   is not run as root, we used "can we write into the / directory?" as
+   a cheap substitute, but on some platforms that is not a good
+   heuristics.  The tests and their prerequisites have been updated to
+   check what they really require.
+   (merge f400e51 jk/sanity later to maint).
+
+ * Various issues around "reflog expire", e.g. using --updateref when
+   expiring a reflog for a symbolic reference, have been corrected
+   and/or made saner.
+
+ * The strbuf API was explained between the API documentation and in
+   the header file.  Move missing bits to strbuf.h so that programmers
+   can check only one place for all necessary information.
+
+ * The error handling functions and conventions are now documented in
+   the API manual.
+
+ * Optimize attribute look-up, mostly useful in "git grep" on a
+   project that does not use many attributes, by avoiding it when we
+   (should) know that the attributes are not defined in the first
+   place.
+
+ * Typofix in comments.
+   (merge ef2956a ak/git-pm-typofix later to maint).
+
+ * Code clean-up.
+   (merge 0b868f0 sb/hex-object-name-is-at-most-41-bytes-long later to maint).
+   (merge 5d30851 dp/remove-duplicated-header-inclusion later to maint).
+
+ * Simplify the ref transaction API around how "the ref should be
+   pointing at this object" is specified.
 
 
 Also contains various documentation updates and code clean-ups.
@@ -169,3 +223,77 @@ notes for details).
 
  * "git blame" died, trying to free an uninitialized piece of memory.
    (merge e600592 es/blame-commit-info-fix later to maint).
+
+ * "git fast-import" used to crash when it could not close and
+   conclude the resulting packfile cleanly.
+   (merge 5e915f3 jk/fast-import-die-nicely-fix later to maint).
+
+ * "update-index --refresh" used to leak when an entry cannot be
+   refreshed for whatever reason.
+   (merge bc1c2ca sb/plug-leak-in-make-cache-entry later to maint).
+
+ * The "interpolated-path" option of "git daemon" inserted any string
+   client declared on the "host=" capability request without checking.
+   Sanitize and limit %H and %CH to a saner and a valid DNS name.
+   (merge b485373 jk/daemon-interpolate later to maint).
+
+ * "git daemon" looked up the hostname even when "%CH" and "%IP"
+   interpolations are not requested, which was unnecessary.
+   (merge dc8edc8 rs/daemon-interpolate later to maint).
+
+ * Even though we officially haven't dropped Perl 5.8 support, the
+   Getopt::Long package that came with it does not support "--no-"
+   prefix to negate a boolean option; manually add support to help
+   people with older Getopt::Long package.
+   (merge f471494 km/send-email-getopt-long-workarounds later to maint).
+
+ * "git apply" was not very careful about reading from, removing,
+   updating and creating paths outside the working tree (under
+   --index/--cached) or the current directory (when used as a
+   replacement for GNU patch).
+   (merge e0d201b jc/apply-beyond-symlink later to maint).
+
+ * A breakage to git-svn around v2.2 era that triggers premature
+   closing of FileHandle has been corrected.
+   (merge e426311 ew/svn-maint-fixes later to maint).
+
+ * We did not parse username followed by literal IPv6 address in SSH
+   transport URLs, e.g. ssh://user@[2001:db8::1]:22/repo.git
+   correctly.
+   (merge 3f55cca tb/connect-ipv6-parse-fix later to maint).
+
+ * The configuration variable 'mailinfo.scissors' was hard to
+   discover in the documentation.
+   (merge afb5de7 mm/am-c-doc later to maint).
+
+ * The interaction between "git submodule update" and the
+   submodule.*.update configuration was not clearly documented.
+   (merge 5c31acf ms/submodule-update-config-doc later to maint).
+
+ * "git diff --shortstat --dirstat=changes" showed a dirstat based on
+   lines that was never asked by the end user in addition to the
+   dirstat that the user asked for.
+   (merge ab27389 mk/diff-shortstat-dirstat-fix later to maint).
+
+ * "git remote add" mentioned "--tags" and "--no-tags" and was not
+   clear that fetch from the remote in the future will use the default
+   behaviour when neither is given to override it.
+   (merge aaba0ab mg/doc-remote-tags-or-not later to maint).
+
+ * Description given by "grep -h" for its --exclude-standard option
+   was phrased poorly.
+   (merge 77fdb8a nd/grep-exclude-standard-help-fix later to maint).
+
+ * The borrowed code in kwset API did not follow our usual convention
+   to use "unsigned char" to store values that range from 0-255.
+   (merge 189c860 bw/kwset-use-unsigned later to maint).
+
+ * A corrupt input to "git diff -M" used to cause it to segfault.
+   (merge 4d6be03 jk/diffcore-rename-duplicate later to maint).
+
+ * Code cleanups and documentaiton updates.
+   (merge 2ce63e9 rs/simple-cleanups later to maint).
+   (merge 33baa69 rj/no-xopen-source-for-cygwin later to maint).
+   (merge 817d03e jc/diff-test-updates later to maint).
+   (merge eb32c66 ak/t5516-typofix later to maint).
+   (merge bcd57cb mr/doc-clean-f-f later to maint).

@@ -164,15 +164,9 @@
 typedef long intptr_t;
 typedef unsigned long uintptr_t;
 #endif
-#if defined(__CYGWIN__)
-#undef _XOPEN_SOURCE
-#include <grp.h>
-#define _XOPEN_SOURCE 600
-#else
 #undef _ALL_SOURCE /* AIX 5.3L defines a struct list with _ALL_SOURCE. */
 #include <grp.h>
 #define _ALL_SOURCE 1
-#endif
 #endif
 
 /* used on Mac OS X */
@@ -694,7 +688,7 @@ static inline size_t xsize_t(off_t len)
 }
 
 /* in ctype.c, for kwset users */
-extern const char tolower_trans_tbl[256];
+extern const unsigned char tolower_trans_tbl[256];
 
 /* Sane ctype - no locale, and works with signed chars */
 #undef isascii

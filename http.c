@@ -8,6 +8,7 @@
 #include "credential.h"
 #include "version.h"
 #include "pkt-line.h"
+#include "gettext.h"
 
 int active_requests;
 int http_is_verbose;
@@ -405,7 +406,9 @@ static CURL *get_curl_handle(void)
 
 	if (curl_http_proxy) {
 		curl_easy_setopt(result, CURLOPT_PROXY, curl_http_proxy);
+#if LIBCURL_VERSION_NUM >= 0x070a07
 		curl_easy_setopt(result, CURLOPT_PROXYAUTH, CURLAUTH_ANY);
+#endif
 	}
 
 	set_curl_keepalive(result);
@@ -998,32 +1001,6 @@ static void extract_content_type(struct strbuf *raw, struct strbuf *type,
 
 	if (!charset->len && starts_with(type->buf, "text/"))
 		strbuf_addstr(charset, "ISO-8859-1");
-}
-
-
-/*
- * Guess the user's preferred languages from the value in LANGUAGE environment
- * variable and LC_MESSAGES locale category if NO_GETTEXT is not defined.
- *
- * The result can be a colon-separated list like "ko:ja:en".
- */
-static const char *get_preferred_languages(void)
-{
-	const char *retval;
-
-	retval = getenv("LANGUAGE");
-	if (retval && *retval)
-		return retval;
-
-#ifndef NO_GETTEXT
-	retval = setlocale(LC_MESSAGES, NULL);
-	if (retval && *retval &&
-		strcmp(retval, "C") &&
-		strcmp(retval, "POSIX"))
-		return retval;
-#endif
-
-	return NULL;
 }
 
 static void write_accept_language(struct strbuf *buf)

@@ -11,7 +11,6 @@
 #include "run-command.h"
 #include "parse-options.h"
 #include "sigchain.h"
-#include "transport.h"
 #include "submodule.h"
 #include "connected.h"
 #include "argv-array.h"
@@ -416,8 +415,10 @@ static int s_update_ref(const char *action,
 
 	transaction = ref_transaction_begin(&err);
 	if (!transaction ||
-	    ref_transaction_update(transaction, ref->name, ref->new_sha1,
-				   ref->old_sha1, 0, check_old, msg, &err))
+	    ref_transaction_update(transaction, ref->name,
+				   ref->new_sha1,
+				   check_old ? ref->old_sha1 : NULL,
+				   0, msg, &err))
 		goto fail;
 
 	ret = ref_transaction_commit(transaction, &err);
