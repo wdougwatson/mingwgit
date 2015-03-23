@@ -127,6 +127,9 @@
 #else
 #include <poll.h>
 #endif
+#ifdef HAVE_BSD_SYSCTL
+#include <sys/sysctl.h>
+#endif
 
 #if defined(__MINGW32__)
 /* pull in Windows compatibility stuff */
@@ -874,6 +877,10 @@ struct tm *git_gmtime_r(const time_t *, struct tm *);
 
 #if !defined(USE_PARENS_AROUND_GETTEXT_N) && defined(__GNUC__)
 #define USE_PARENS_AROUND_GETTEXT_N 1
+#endif
+
+#ifndef SHELL_PATH
+# define SHELL_PATH "/bin/sh"
 #endif
 
 #endif
