@@ -166,7 +166,7 @@ test_expect_success 'prompt - inside bare repository' '
 '
 
 test_expect_success 'prompt - interactive rebase' '
-	printf " (b1|REBASE-i 2/3)" >expected
+	printf " (b1|REBASE-i 2/3)" >expected &&
 	write_script fake_editor.sh <<-\EOF &&
 		echo "exec echo" >"$1"
 		echo "edit $(git log -1 --format="%h")" >>"$1"
@@ -391,6 +391,17 @@ test_expect_success 'prompt - untracked files status indicator - no untracked fi
 test_expect_success 'prompt - untracked files status indicator - untracked files' '
 	printf " (master %%)" >expected &&
 	(
+		GIT_PS1_SHOWUNTRACKEDFILES=y &&
+		__git_ps1 >"$actual"
+	) &&
+	test_cmp expected "$actual"
+'
+
+test_expect_success 'prompt - untracked files status indicator - untracked files outside cwd' '
+	printf " (master %%)" >expected &&
+	(
+		mkdir -p ignored_dir &&
+		cd ignored_dir &&
 		GIT_PS1_SHOWUNTRACKEDFILES=y &&
 		__git_ps1 >"$actual"
 	) &&

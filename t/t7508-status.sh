@@ -435,7 +435,7 @@ test_expect_success 'status -s -uno' '
 '
 
 test_expect_success 'status -s (status.showUntrackedFiles no)' '
-	git config status.showuntrackedfiles no
+	git config status.showuntrackedfiles no &&
 	git status -s >output &&
 	test_cmp expect output
 '
@@ -469,7 +469,7 @@ EOF
 '
 
 test_expect_success 'status (status.showUntrackedFiles normal)' '
-	test_config status.showuntrackedfiles normal
+	test_config status.showuntrackedfiles normal &&
 	git status >output &&
 	test_i18ncmp expect output
 '
@@ -489,7 +489,7 @@ test_expect_success 'status -s -unormal' '
 '
 
 test_expect_success 'status -s (status.showUntrackedFiles normal)' '
-	git config status.showuntrackedfiles normal
+	git config status.showuntrackedfiles normal &&
 	git status -s >output &&
 	test_cmp expect output
 '
@@ -524,7 +524,7 @@ EOF
 '
 
 test_expect_success 'status (status.showUntrackedFiles all)' '
-	test_config status.showuntrackedfiles all
+	test_config status.showuntrackedfiles all &&
 	git status >output &&
 	test_i18ncmp expect output
 '
@@ -542,7 +542,7 @@ A  dir2/added
 ?? untracked
 EOF
 test_expect_success 'status -s -uall' '
-	git config --unset status.showuntrackedfiles
+	test_unconfig status.showuntrackedfiles &&
 	git status -s -uall >output &&
 	test_cmp expect output
 '
