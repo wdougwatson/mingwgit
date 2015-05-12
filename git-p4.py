@@ -368,7 +368,7 @@ def getP4OpenedType(file):
     # Returns the perforce file type for the given file.
 
     result = p4_read_pipe(["opened", wildcard_encode(file)])
-    match = re.match(".*\((.+)\)\r?$", result)
+    match = re.match(".*\((.+)\)( \*exclusive\*)?\r?$", result)
     if match:
         return match.group(1)
     else:
@@ -502,12 +502,14 @@ def p4Cmd(cmd):
 def p4Where(depotPath):
     if not depotPath.endswith("/"):
         depotPath += "/"
-    depotPath = depotPath + "..."
-    outputList = p4CmdList(["where", depotPath])
+    depotPathLong = depotPath + "..."
+    outputList = p4CmdList(["where", depotPathLong])
     output = None
     for entry in outputList:
         if "depotFile" in entry:
-            if entry["depotFile"] == depotPath:
+            # Search for the base client side depot path, as long as it starts with the branch's P4 path.
+            # The base path always ends with "/...".
+            if entry["depotFile"].find(depotPath) == 0 and entry["depotFile"][-4:] == "/...":
                 output = entry
                 break
         elif "data" in entry:
@@ -740,17 +742,43 @@ def createOrUpdateBranchesFromOrigin(localRefPrefix = "refs/remotes/p4/", silent
 def originP4BranchesExist():
         return gitBranchExists("origin") or gitBranchExists("origin/p4") or gitBranchExists("origin/p4/master")
 
-def p4ChangesForPaths(depotPaths, changeRange):
+def p4ChangesForPaths(depotPaths, changeRange, block_size):
     assert depotPaths
-    cmd = ['changes']
-    for p in depotPaths:
-        cmd += ["%s...%s" % (p, changeRange)]
-    output = p4_read_pipe_lines(cmd)
+    assert block_size
 
+    # Parse the change range into start and end
+    if changeRange is None or changeRange == '':
+        changeStart = '@1'
+        changeEnd = '#head'
+    else:
+        parts = changeRange.split(',')
+        assert len(parts) == 2
+        changeStart = parts[0]
+        changeEnd = parts[1]
+
+    # Accumulate change numbers in a dictionary to avoid duplicates
     changes = {}
-    for line in output:
-        changeNum = int(line.split(" ")[1])
-        changes[changeNum] = True
+
+    for p in depotPaths:
+        # Retrieve changes a block at a time, to prevent running
+        # into a MaxScanRows error from the server.
+        start = changeStart
+        end = changeEnd
+        get_another_block = True
+        while get_another_block:
+            new_changes = []
+            cmd = ['changes']
+            cmd += ['-m', str(block_size)]
+            cmd += ["%s...%s,%s" % (p, start, end)]
+            for line in p4_read_pipe_lines(cmd):
+                changeNum = int(line.split(" ")[1])
+                new_changes.append(changeNum)
+                changes[changeNum] = True
+            if len(new_changes) == block_size:
+                get_another_block = True
+                end = '@' + str(min(new_changes))
+            else:
+                get_another_block = False
 
     changelist = changes.keys()
     changelist.sort()
@@ -1627,7 +1655,10 @@ class P4Submit(Command, P4UserMap):
         if self.useClientSpec:
             self.clientSpecDirs = getClientSpec()
 
-        if self.useClientSpec:
+        # Check for the existance of P4 branches
+        branchesDetected = (len(p4BranchesInGit().keys()) > 1)
+
+        if self.useClientSpec and not branchesDetected:
             # all files are relative to the client spec
             self.clientPath = getClientRoot()
         else:
@@ -1911,7 +1942,10 @@ class P4Sync(Command, P4UserMap):
                 optparse.make_option("--import-labels", dest="importLabels", action="store_true"),
                 optparse.make_option("--import-local", dest="importIntoRemotes", action="store_false",
                                      help="Import into refs/heads/ , not refs/remotes"),
-                optparse.make_option("--max-changes", dest="maxChanges"),
+                optparse.make_option("--max-changes", dest="maxChanges",
+                                     help="Maximum number of changes to import"),
+                optparse.make_option("--changes-block-size", dest="changes_block_size", type="int",
+                                     help="Internal block size to use when iteratively calling p4 changes"),
                 optparse.make_option("--keep-path", dest="keepRepoPath", action='store_true',
                                      help="Keep entire BRANCH/DIR/SUBDIR prefix during import"),
                 optparse.make_option("--use-client-spec", dest="useClientSpec", action='store_true',
@@ -1940,6 +1974,7 @@ class P4Sync(Command, P4UserMap):
         self.syncWithOrigin = True
         self.importIntoRemotes = True
         self.maxChanges = ""
+        self.changes_block_size = 500
         self.keepRepoPath = False
         self.depotPaths = None
         self.p4BranchesInGit = []
@@ -2586,7 +2621,7 @@ class P4Sync(Command, P4UserMap):
         branchPrefix = self.depotPaths[0] + branch + "/"
         range = "@1,%s" % maxChange
         #print "prefix" + branchPrefix
-        changes = p4ChangesForPaths([branchPrefix], range)
+        changes = p4ChangesForPaths([branchPrefix], range, self.changes_block_size)
         if len(changes) <= 0:
             return False
         firstChange = changes[0]
@@ -3002,7 +3037,7 @@ class P4Sync(Command, P4UserMap):
                 if self.verbose:
                     print "Getting p4 changes for %s...%s" % (', '.join(self.depotPaths),
                                                               self.changeRange)
-                changes = p4ChangesForPaths(self.depotPaths, self.changeRange)
+                changes = p4ChangesForPaths(self.depotPaths, self.changeRange, self.changes_block_size)
 
                 if len(self.maxChanges) > 0:
                     changes = changes[:min(int(self.maxChanges), len(changes))]

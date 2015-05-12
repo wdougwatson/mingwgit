@@ -193,7 +193,7 @@ static int get_value(const char *key_, const char *regex_)
 
 		key_regexp = (regex_t*)xmalloc(sizeof(regex_t));
 		if (regcomp(key_regexp, key, REG_EXTENDED)) {
-			fprintf(stderr, "Invalid key pattern: %s\n", key_);
+			error("invalid key pattern: %s", key_);
 			free(key_regexp);
 			key_regexp = NULL;
 			ret = CONFIG_INVALID_PATTERN;
@@ -214,7 +214,7 @@ static int get_value(const char *key_, const char *regex_)
 
 		regexp = (regex_t*)xmalloc(sizeof(regex_t));
 		if (regcomp(regexp, regex_, REG_EXTENDED)) {
-			fprintf(stderr, "Invalid pattern: %s\n", regex_);
+			error("invalid pattern: %s", regex_);
 			free(regexp);
 			regexp = NULL;
 			ret = CONFIG_INVALID_PATTERN;
@@ -455,9 +455,9 @@ static char *default_user_config(void)
 	struct strbuf buf = STRBUF_INIT;
 	strbuf_addf(&buf,
 		    _("# This is Git's per-user configuration file.\n"
-		      "[core]\n"
+		      "[user]\n"
 		      "# Please adapt and uncomment the following lines:\n"
-		      "#	user = %s\n"
+		      "#	name = %s\n"
 		      "#	email = %s\n"),
 		    ident_default_name(),
 		    ident_default_email());
@@ -488,10 +488,8 @@ int cmd_config(int argc, const char **argv, const char *prefix)
 	}
 
 	if (use_global_config) {
-		char *user_config = NULL;
-		char *xdg_config = NULL;
-
-		home_config_paths(&user_config, &xdg_config, "config");
+		char *user_config = expand_user_path("~/.gitconfig");
+		char *xdg_config = xdg_config_home("config");
 
 		if (!user_config)
 			/*

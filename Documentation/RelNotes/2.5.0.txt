@@ -1,0 +1,166 @@
+Git 2.5 Release Notes
+=====================
+
+Updates since v2.4
+------------------
+
+Ports
+
+
+UI, Workflows & Features
+
+ * "git p4" now detects the filetype (e.g. binary) correctly even when
+   the files are opened exclusively.
+
+ * git p4 attempts to better handle branches in Perforce.
+
+ * "git p4" learned "--changes-block-size <n>" to read the changes in
+   chunks from Perforce, instead of making one call to "p4 changes"
+   that may trigger "too many rows scanned" error from Perforce.
+
+ * "git show-branch --topics HEAD" (with no other arguments) did not
+   do anything interesting.  Instead, contrast the given revision
+   against all the local branches by default.
+
+ * A replacement for contrib/workdir/git-new-workdir that does not
+   rely on symbolic links and make sharing of objects and refs safer
+   by making the borrowee and borrowers aware of each other.
+
+ * Tweak the sample "store" backend of the credential helper to honor
+   XDG configuration file locations when specified.
+
+
+Performance, Internal Implementation, Development Support etc.
+
+ * "unsigned char [20]" used thoughout the code to represent object
+   names are being converted into a semi-opaque "struct object_id".
+   This effort is expected to interfere with other topics in flight,
+   but hopefully will give us one extra level of abstraction in the
+   end, when completed.
+
+ * Catch a programmer mistake to feed a pointer not an array to
+   ARRAY_SIZE() macro, by using a couple of GCC extensions.
+   (merge 89c855e ep/do-not-feed-a-pointer-to-array-size later to maint).
+
+ * Some error messages in "git config" were emitted without calling
+   the usual error() facility.
+
+ * When "add--interactive" splits a hunk into two overlapping hunks
+   and then let the user choose only one, it sometimes feeds an
+   incorrect patch text to "git apply".  Add tests to demonstrate
+   this.
+
+   I have a slight suspicion that this may be $gmane/87202 coming back
+   and biting us (I seem to have said "let's run with this and see
+   what happens" back then).
+
+ * More line-ending tests.
+
+ * An earlier rewrite to use strbuf_getwholeline() instead of fgets(3)
+   to read packed-refs file revealed that the former is unacceptably
+   inefficient.
+
+ * Many long-running operations show progress eye-candy, even when
+   they are later backgrounded.  Hide the eye-candy when the process
+   is sent to the background instead.
+   (merge 9a9a41d lm/squelch-bg-progress later to maint).
+
+
+Also contains various documentation updates and code clean-ups.
+
+
+Fixes since v2.4
+----------------
+
+Unless otherwise noted, all the fixes since v2.4 in the maintenance
+track are contained in this release (see the maintenance releases'
+notes for details).
+
+ * Memory usage of "git index-pack" has been trimmed by tens of
+   per-cent.
+   (merge c6458e6 nd/slim-index-pack-memory-usage later to maint).
+
+ * "git rev-list --objects $old --not --all" to see if everything that
+   is reachable from $old is already connected to the existing refs
+   was very inefficient.
+   (merge b6e8a3b jk/still-interesting later to maint).
+
+ * "hash-object --literally" introduced in v2.2 was not prepared to
+   take a really long object type name.
+   (merge 1427a7f jc/hash-object later to maint).
+
+ * "git rebase --quiet" was not quite quiet when there is nothing to
+   do.
+   (merge 22946a9 jk/rebase-quiet-noop later to maint).
+
+ * The completion for "log --decorate=" parameter value was incorrect.
+   (merge af16bda sg/complete-decorate-full-not-long later to maint).
+
+ * "filter-branch" corrupted commit log message that ends with an
+   incomplete line on platforms with some "sed" implementations that
+   munge such a line.  Work it around by avoiding to use "sed".
+   (merge df06201 jk/filter-branch-use-of-sed-on-incomplete-line later to maint).
+
+ * "git daemon" fails to build from the source under NO_IPV6
+   configuration (regression in 2.4).
+   (merge d358f77 jc/daemon-no-ipv6-for-2.4.1 later to maint).
+
+ * Some time ago, "git blame" (incorrectly) lost the convert_to_git()
+   call when synthesizing a fake "tip" commit that represents the
+   state in the working tree, which broke folks who record the history
+   with LF line ending to make their project portabile across
+   platforms while terminating lines in their working tree files with
+   CRLF for their platform.
+   (merge 4bf256d tb/blame-resurrect-convert-to-git later to maint).
+
+ * We avoid setting core.worktree when the repository location is the
+   ".git" directory directly at the top level of the working tree, but
+   the code misdetected the case in which the working tree is at the
+   root level of the filesystem (which arguably is a silly thing to
+   do, but still valid).
+   (merge 84ccad8 jk/init-core-worktree-at-root later to maint).
+
+ * "git commit --date=now" or anything that relies on approxidate lost
+   the daylight-saving-time offset.
+   (merge f6e6362 jc/epochtime-wo-tz later to maint).
+
+ * Access to objects in repositories that borrow from another one on a
+   slow NFS server unnecessarily got more expensive due to recent code
+   becoming more cautious in a naive way not to lose objects to pruning.
+   (merge ee1c6c3 jk/prune-mtime later to maint).
+
+ * The codepaths that read .gitignore and .gitattributes files have been
+   taught that these files encoded in UTF-8 may have UTF-8 BOM marker at
+   the beginning; this makes it in line with what we do for configuration
+   files already.
+   (merge 27547e5 cn/bom-in-gitignore later to maint).
+
+ * a few helper scripts in the test suite did not report errors
+   correcty.
+   (merge de248e9 ep/fix-test-lib-functions-report later to maint).
+
+ * The default $HOME/.gitconfig file created upon "git config --global"
+   that edits it had incorrectly spelled user.name and user.email
+   entries in it.
+   (merge 7e11052 oh/fix-config-default-user-name-section later to maint).
+
+ * "git cat-file bl $blob" failed to barf even though there is no
+   object type that is "bl".
+   (merge b7994af jk/type-from-string-gently later to maint).
+
+ * The usual "git diff" when seeing a file turning into a directory
+   showed a patchset to remove the file and create all files in the
+   directory, but "git diff --no-index" simply refused to work.  Also,
+   when asked to compare a file and a directory, imitate POSIX "diff"
+   and compare the file with the file with the same name in the
+   directory, instead of refusing to run.
+   (merge 0615173 jc/diff-no-index-d-f later to maint).
+
+ * Code cleanups and documentation updates.
+   (merge 0269f96 mm/usage-log-l-can-take-regex later to maint).
+   (merge 64f2589 nd/t1509-chroot-test later to maint).
+   (merge f86a374 sb/test-bitmap-free-at-end later to maint).
+   (merge 05bfc7d sb/line-log-plug-pairdiff-leak later to maint).
+   (merge 846e5df pt/xdg-config-path later to maint).
+   (merge 1154aa4 jc/plug-fmt-merge-msg-leak later to maint).
+   (merge 319b678 jk/sha1-file-reduce-useless-warnings later to maint).

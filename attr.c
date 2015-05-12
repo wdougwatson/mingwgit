@@ -12,6 +12,7 @@
 #include "exec_cmd.h"
 #include "attr.h"
 #include "dir.h"
+#include "utf8.h"
 
 const char git_attr__true[] = "(builtin)true";
 const char git_attr__false[] = "\0(builtin)false";
@@ -379,8 +380,12 @@ static struct attr_stack *read_attr_from_file(const char *path, int macro_ok)
 		return NULL;
 	}
 	res = xcalloc(1, sizeof(*res));
-	while (fgets(buf, sizeof(buf), fp))
-		handle_attr_line(res, buf, path, ++lineno, macro_ok);
+	while (fgets(buf, sizeof(buf), fp)) {
+		char *bufp = buf;
+		if (!lineno)
+			skip_utf8_bom(&bufp, strlen(bufp));
+		handle_attr_line(res, bufp, path, ++lineno, macro_ok);
+	}
 	fclose(fp);
 	return res;
 }
@@ -488,7 +493,6 @@ static int git_attr_system(void)
 static void bootstrap_attr_stack(void)
 {
 	struct attr_stack *elem;
-	char *xdg_attributes_file;
 
 	if (attr_stack)
 		return;
@@ -507,10 +511,8 @@ static void bootstrap_attr_stack(void)
 		}
 	}
 
-	if (!git_attributes_file) {
-		home_config_paths(NULL, &xdg_attributes_file, "attributes");
-		git_attributes_file = xdg_attributes_file;
-	}
+	if (!git_attributes_file)
+		git_attributes_file = xdg_config_home("attributes");
 	if (git_attributes_file) {
 		elem = read_attr_from_file(git_attributes_file, 1);
 		if (elem) {

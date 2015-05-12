@@ -12,6 +12,7 @@
 #include "refs.h"
 #include "wildmatch.h"
 #include "pathspec.h"
+#include "utf8.h"
 
 struct path_simplify {
 	int len;
@@ -617,7 +618,12 @@ int add_excludes_from_file_to_list(const char *fname,
 	}
 
 	el->filebuf = buf;
+
+	if (skip_utf8_bom(&buf, size))
+		size -= buf - el->filebuf;
+
 	entry = buf;
+
 	for (i = 0; i < size; i++) {
 		if (buf[i] == '\n') {
 			if (entry != buf + i && entry[0] != '#') {
@@ -1665,14 +1671,11 @@ int remove_dir_recursively(struct strbuf *path, int flag)
 void setup_standard_excludes(struct dir_struct *dir)
 {
 	const char *path;
-	char *xdg_path;
 
 	dir->exclude_per_dir = ".gitignore";
 	path = git_path("info/exclude");
-	if (!excludes_file) {
-		home_config_paths(NULL, &xdg_path, "ignore");
-		excludes_file = xdg_path;
-	}
+	if (!excludes_file)
+		excludes_file = xdg_config_home("ignore");
 	if (!access_or_warn(path, R_OK, 0))
 		add_excludes_from_file(dir, path);
 	if (excludes_file && !access_or_warn(excludes_file, R_OK, 0))
