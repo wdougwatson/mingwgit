@@ -42,7 +42,7 @@ static long diff_algorithm;
 
 static char diff_colors[][COLOR_MAXLEN] = {
 	GIT_COLOR_RESET,
-	GIT_COLOR_NORMAL,	/* PLAIN */
+	GIT_COLOR_NORMAL,	/* CONTEXT */
 	GIT_COLOR_BOLD,		/* METAINFO */
 	GIT_COLOR_CYAN,		/* FRAGINFO */
 	GIT_COLOR_RED,		/* OLD */
@@ -54,8 +54,8 @@ static char diff_colors[][COLOR_MAXLEN] = {
 
 static int parse_diff_color_slot(const char *var)
 {
-	if (!strcasecmp(var, "plain"))
-		return DIFF_PLAIN;
+	if (!strcasecmp(var, "context") || !strcasecmp(var, "plain"))
+		return DIFF_CONTEXT;
 	if (!strcasecmp(var, "meta"))
 		return DIFF_METAINFO;
 	if (!strcasecmp(var, "frag"))
@@ -478,30 +478,63 @@ static int new_blank_line_at_eof(struct emit_callback *ecbdata, const char *line
 	return ws_blank_line(line, len, ecbdata->ws_rule);
 }
 
-static void emit_add_line(const char *reset,
-			  struct emit_callback *ecbdata,
-			  const char *line, int len)
+static void emit_line_checked(const char *reset,
+			      struct emit_callback *ecbdata,
+			      const char *line, int len,
+			      enum color_diff color,
+			      unsigned ws_error_highlight,
+			      char sign)
 {
-	const char *ws = diff_get_color(ecbdata->color_diff, DIFF_WHITESPACE);
-	const char *set = diff_get_color(ecbdata->color_diff, DIFF_FILE_NEW);
+	const char *set = diff_get_color(ecbdata->color_diff, color);
+	const char *ws = NULL;
 
-	if (!*ws)
-		emit_line_0(ecbdata->opt, set, reset, '+', line, len);
-	else if (new_blank_line_at_eof(ecbdata, line, len))
+	if (ecbdata->opt->ws_error_highlight & ws_error_highlight) {
+		ws = diff_get_color(ecbdata->color_diff, DIFF_WHITESPACE);
+		if (!*ws)
+			ws = NULL;
+	}
+
+	if (!ws)
+		emit_line_0(ecbdata->opt, set, reset, sign, line, len);
+	else if (sign == '+' && new_blank_line_at_eof(ecbdata, line, len))
 		/* Blank line at EOF - paint '+' as well */
-		emit_line_0(ecbdata->opt, ws, reset, '+', line, len);
+		emit_line_0(ecbdata->opt, ws, reset, sign, line, len);
 	else {
 		/* Emit just the prefix, then the rest. */
-		emit_line_0(ecbdata->opt, set, reset, '+', "", 0);
+		emit_line_0(ecbdata->opt, set, reset, sign, "", 0);
 		ws_check_emit(line, len, ecbdata->ws_rule,
 			      ecbdata->opt->file, set, reset, ws);
 	}
 }
 
+static void emit_add_line(const char *reset,
+			  struct emit_callback *ecbdata,
+			  const char *line, int len)
+{
+	emit_line_checked(reset, ecbdata, line, len,
+			  DIFF_FILE_NEW, WSEH_NEW, '+');
+}
+
+static void emit_del_line(const char *reset,
+			  struct emit_callback *ecbdata,
+			  const char *line, int len)
+{
+	emit_line_checked(reset, ecbdata, line, len,
+			  DIFF_FILE_OLD, WSEH_OLD, '-');
+}
+
+static void emit_context_line(const char *reset,
+			      struct emit_callback *ecbdata,
+			      const char *line, int len)
+{
+	emit_line_checked(reset, ecbdata, line, len,
+			  DIFF_CONTEXT, WSEH_CONTEXT, ' ');
+}
+
 static void emit_hunk_header(struct emit_callback *ecbdata,
 			     const char *line, int len)
 {
-	const char *plain = diff_get_color(ecbdata->color_diff, DIFF_PLAIN);
+	const char *context = diff_get_color(ecbdata->color_diff, DIFF_CONTEXT);
 	const char *frag = diff_get_color(ecbdata->color_diff, DIFF_FRAGINFO);
 	const char *func = diff_get_color(ecbdata->color_diff, DIFF_FUNCINFO);
 	const char *reset = diff_get_color(ecbdata->color_diff, DIFF_RESET);
@@ -518,7 +551,7 @@ static void emit_hunk_header(struct emit_callback *ecbdata,
 	if (len < 10 ||
 	    memcmp(line, atat, 2) ||
 	    !(ep = memmem(line + 2, len - 2, atat, 2))) {
-		emit_line(ecbdata->opt, plain, reset, line, len);
+		emit_line(ecbdata->opt, context, reset, line, len);
 		return;
 	}
 	ep += 2; /* skip over @@ */
@@ -540,7 +573,7 @@ static void emit_hunk_header(struct emit_callback *ecbdata,
 		if (*ep != ' ' && *ep != '\t')
 			break;
 	if (ep != cp) {
-		strbuf_addstr(&msgbuf, plain);
+		strbuf_addstr(&msgbuf, context);
 		strbuf_add(&msgbuf, cp, ep - cp);
 		strbuf_addstr(&msgbuf, reset);
 	}
@@ -603,7 +636,6 @@ static void emit_rewrite_lines(struct emit_callback *ecb,
 {
 	const char *endp = NULL;
 	static const char *nneof = " No newline at end of file\n";
-	const char *old = diff_get_color(ecb->color_diff, DIFF_FILE_OLD);
 	const char *reset = diff_get_color(ecb->color_diff, DIFF_RESET);
 
 	while (0 < size) {
@@ -613,8 +645,7 @@ static void emit_rewrite_lines(struct emit_callback *ecb,
 		len = endp ? (endp - data + 1) : size;
 		if (prefix != '+') {
 			ecb->lno_in_preimage++;
-			emit_line_0(ecb->opt, old, reset, '-',
-				    data, len);
+			emit_del_line(reset, ecb, data, len);
 		} else {
 			ecb->lno_in_postimage++;
 			emit_add_line(reset, ecb, data, len);
@@ -623,10 +654,10 @@ static void emit_rewrite_lines(struct emit_callback *ecb,
 		data += len;
 	}
 	if (!endp) {
-		const char *plain = diff_get_color(ecb->color_diff,
-						   DIFF_PLAIN);
+		const char *context = diff_get_color(ecb->color_diff,
+						     DIFF_CONTEXT);
 		putc('\n', ecb->opt->file);
-		emit_line_0(ecb->opt, plain, reset, '\\',
+		emit_line_0(ecb->opt, context, reset, '\\',
 			    nneof, strlen(nneof));
 	}
 }
@@ -1086,7 +1117,7 @@ static void init_diff_words_data(struct emit_callback *ecbdata,
 		struct diff_words_style *st = ecbdata->diff_words->style;
 		st->old.color = diff_get_color_opt(o, DIFF_FILE_OLD);
 		st->new.color = diff_get_color_opt(o, DIFF_FILE_NEW);
-		st->ctx.color = diff_get_color_opt(o, DIFF_PLAIN);
+		st->ctx.color = diff_get_color_opt(o, DIFF_CONTEXT);
 	}
 }
 
@@ -1162,7 +1193,7 @@ static void fn_out_consume(void *priv, char *line, unsigned long len)
 {
 	struct emit_callback *ecbdata = priv;
 	const char *meta = diff_get_color(ecbdata->color_diff, DIFF_METAINFO);
-	const char *plain = diff_get_color(ecbdata->color_diff, DIFF_PLAIN);
+	const char *context = diff_get_color(ecbdata->color_diff, DIFF_CONTEXT);
 	const char *reset = diff_get_color(ecbdata->color_diff, DIFF_RESET);
 	struct diff_options *o = ecbdata->opt;
 	const char *line_prefix = diff_line_prefix(o);
@@ -1233,7 +1264,7 @@ static void fn_out_consume(void *priv, char *line, unsigned long len)
 		}
 		diff_words_flush(ecbdata);
 		if (ecbdata->diff_words->type == DIFF_WORDS_PORCELAIN) {
-			emit_line(ecbdata->opt, plain, reset, line, len);
+			emit_line(ecbdata->opt, context, reset, line, len);
 			fputs("~\n", ecbdata->opt->file);
 		} else {
 			/*
@@ -1245,22 +1276,32 @@ static void fn_out_consume(void *priv, char *line, unsigned long len)
 			      line++;
 			      len--;
 			}
-			emit_line(ecbdata->opt, plain, reset, line, len);
+			emit_line(ecbdata->opt, context, reset, line, len);
 		}
 		return;
 	}
 
-	if (line[0] != '+') {
-		const char *color =
-			diff_get_color(ecbdata->color_diff,
-				       line[0] == '-' ? DIFF_FILE_OLD : DIFF_PLAIN);
-		ecbdata->lno_in_preimage++;
-		if (line[0] == ' ')
-			ecbdata->lno_in_postimage++;
-		emit_line(ecbdata->opt, color, reset, line, len);
-	} else {
+	switch (line[0]) {
+	case '+':
 		ecbdata->lno_in_postimage++;
 		emit_add_line(reset, ecbdata, line + 1, len - 1);
+		break;
+	case '-':
+		ecbdata->lno_in_preimage++;
+		emit_del_line(reset, ecbdata, line + 1, len - 1);
+		break;
+	case ' ':
+		ecbdata->lno_in_postimage++;
+		ecbdata->lno_in_preimage++;
+		emit_context_line(reset, ecbdata, line + 1, len - 1);
+		break;
+	default:
+		/* incomplete line at the end */
+		ecbdata->lno_in_preimage++;
+		emit_line(ecbdata->opt,
+			  diff_get_color(ecbdata->color_diff, DIFF_CONTEXT),
+			  reset, line, len);
+		break;
 	}
 }
 
@@ -3223,6 +3264,7 @@ void diff_setup(struct diff_options *options)
 	options->rename_limit = -1;
 	options->dirstat_permille = diff_dirstat_permille_default;
 	options->context = diff_context_default;
+	options->ws_error_highlight = WSEH_NEW;
 	DIFF_OPT_SET(options, RENAME_EMPTY);
 
 	/* pathchange left =NULL by default */
@@ -3609,6 +3651,40 @@ static void enable_patch_output(int *fmt) {
 	*fmt |= DIFF_FORMAT_PATCH;
 }
 
+static int parse_one_token(const char **arg, const char *token)
+{
+	return skip_prefix(*arg, token, arg) && (!**arg || **arg == ',');
+}
+
+static int parse_ws_error_highlight(struct diff_options *opt, const char *arg)
+{
+	const char *orig_arg = arg;
+	unsigned val = 0;
+	while (*arg) {
+		if (parse_one_token(&arg, "none"))
+			val = 0;
+		else if (parse_one_token(&arg, "default"))
+			val = WSEH_NEW;
+		else if (parse_one_token(&arg, "all"))
+			val = WSEH_NEW | WSEH_OLD | WSEH_CONTEXT;
+		else if (parse_one_token(&arg, "new"))
+			val |= WSEH_NEW;
+		else if (parse_one_token(&arg, "old"))
+			val |= WSEH_OLD;
+		else if (parse_one_token(&arg, "context"))
+			val |= WSEH_CONTEXT;
+		else {
+			error("unknown value after ws-error-highlight=%.*s",
+			      (int)(arg - orig_arg), orig_arg);
+			return 0;
+		}
+		if (*arg)
+			arg++;
+	}
+	opt->ws_error_highlight = val;
+	return 1;
+}
+
 int diff_opt_parse(struct diff_options *options, const char **av, int ac)
 {
 	const char *arg = av[0];
@@ -3806,6 +3882,8 @@ int diff_opt_parse(struct diff_options *options, const char **av, int ac)
 		DIFF_OPT_SET(options, SUBMODULE_LOG);
 	else if (skip_prefix(arg, "--submodule=", &arg))
 		return parse_submodule_opt(options, arg);
+	else if (skip_prefix(arg, "--ws-error-highlight=", &arg))
+		return parse_ws_error_highlight(options, arg);
 
 	/* misc options */
 	else if (!strcmp(arg, "-z"))

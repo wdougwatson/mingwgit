@@ -13,6 +13,8 @@
 #include "line-log.h"
 
 static struct decoration name_decoration = { "object names" };
+static int decoration_loaded;
+static int decoration_flags;
 
 static char decoration_colors[][COLOR_MAXLEN] = {
 	GIT_COLOR_RESET,
@@ -87,26 +89,29 @@ const struct name_decoration *get_name_decoration(const struct object *obj)
 	return lookup_decoration(&name_decoration, obj);
 }
 
-static int add_ref_decoration(const char *refname, const unsigned char *sha1, int flags, void *cb_data)
+static int add_ref_decoration(const char *refname, const struct object_id *oid,
+			      int flags, void *cb_data)
 {
 	struct object *obj;
 	enum decoration_type type = DECORATION_NONE;
 
+	assert(cb_data == NULL);
+
 	if (starts_with(refname, "refs/replace/")) {
-		unsigned char original_sha1[20];
+		struct object_id original_oid;
 		if (!check_replace_refs)
 			return 0;
-		if (get_sha1_hex(refname + 13, original_sha1)) {
+		if (get_oid_hex(refname + 13, &original_oid)) {
 			warning("invalid replace ref %s", refname);
 			return 0;
 		}
-		obj = parse_object(original_sha1);
+		obj = parse_object(original_oid.hash);
 		if (obj)
 			add_name_decoration(DECORATION_GRAFTED, "replaced", obj);
 		return 0;
 	}
 
-	obj = parse_object(sha1);
+	obj = parse_object(oid->hash);
 	if (!obj)
 		return 0;
 
@@ -121,8 +126,6 @@ static int add_ref_decoration(const char *refname, const unsigned char *sha1, in
 	else if (!strcmp(refname, "HEAD"))
 		type = DECORATION_REF_HEAD;
 
-	if (!cb_data || *(int *)cb_data == DECORATE_SHORT_REFS)
-		refname = prettify_refname(refname);
 	add_name_decoration(type, refname, obj);
 	while (obj->type == OBJ_TAG) {
 		obj = ((struct tag *)obj)->tagged;
@@ -146,11 +149,12 @@ static int add_graft_decoration(const struct commit_graft *graft, void *cb_data)
 
 void load_ref_decorations(int flags)
 {
-	static int loaded;
-	if (!loaded) {
-		loaded = 1;
-		for_each_ref(add_ref_decoration, &flags);
-		head_ref(add_ref_decoration, &flags);
+	if (!decoration_loaded) {
+
+		decoration_loaded = 1;
+		decoration_flags = flags;
+		for_each_ref(add_ref_decoration, NULL);
+		head_ref(add_ref_decoration, NULL);
 		for_each_commit_graft(add_graft_decoration, NULL);
 	}
 }
@@ -196,7 +200,8 @@ static const struct name_decoration *current_pointed_by_HEAD(const struct name_d
 	branch_name = resolve_ref_unsafe("HEAD", 0, unused, &rru_flags);
 	if (!(rru_flags & REF_ISSYMREF))
 		return NULL;
-	if (!skip_prefix(branch_name, "refs/heads/", &branch_name))
+
+	if (!starts_with(branch_name, "refs/"))
 		return NULL;
 
 	/* OK, do we have that ref in the list? */
@@ -207,6 +212,14 @@ static const struct name_decoration *current_pointed_by_HEAD(const struct name_d
 		}
 
 	return NULL;
+}
+
+static void show_name(struct strbuf *sb, const struct name_decoration *decoration)
+{
+	if (decoration_flags == DECORATE_SHORT_REFS)
+		strbuf_addstr(sb, prettify_refname(decoration->name));
+	else
+		strbuf_addstr(sb, decoration->name);
 }
 
 /*
@@ -246,7 +259,7 @@ void format_decorations_extended(struct strbuf *sb,
 			if (decoration->type == DECORATION_REF_TAG)
 				strbuf_addstr(sb, "tag: ");
 
-			strbuf_addstr(sb, decoration->name);
+			show_name(sb, decoration);
 
 			if (current_and_HEAD &&
 			    decoration->type == DECORATION_REF_HEAD) {
@@ -255,7 +268,7 @@ void format_decorations_extended(struct strbuf *sb,
 				strbuf_addstr(sb, " -> ");
 				strbuf_addstr(sb, color_reset);
 				strbuf_addstr(sb, decorate_get_color(use_color, current_and_HEAD->type));
-				strbuf_addstr(sb, current_and_HEAD->name);
+				show_name(sb, current_and_HEAD);
 			}
 			strbuf_addstr(sb, color_reset);
 

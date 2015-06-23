@@ -123,14 +123,12 @@ static int branch_merged(int kind, const char *name,
 
 	if (kind == REF_LOCAL_BRANCH) {
 		struct branch *branch = branch_get(name);
+		const char *upstream = branch_get_upstream(branch, NULL);
 		unsigned char sha1[20];
 
-		if (branch &&
-		    branch->merge &&
-		    branch->merge[0] &&
-		    branch->merge[0]->dst &&
+		if (upstream &&
 		    (reference_name = reference_name_to_free =
-		     resolve_refdup(branch->merge[0]->dst, RESOLVE_REF_READING,
+		     resolve_refdup(upstream, RESOLVE_REF_READING,
 				    sha1, NULL)) != NULL)
 			reference_rev = lookup_commit_reference(sha1);
 	}
@@ -242,7 +240,7 @@ static int delete_branches(int argc, const char **argv, int force, int kinds,
 					    sha1, &flags);
 		if (!target) {
 			error(remote_branch
-			      ? _("remote branch '%s' not found.")
+			      ? _("remote-tracking branch '%s' not found.")
 			      : _("branch '%s' not found."), bname.buf);
 			ret = 1;
 			continue;
@@ -257,7 +255,7 @@ static int delete_branches(int argc, const char **argv, int force, int kinds,
 
 		if (delete_ref(name, sha1, REF_NODEREF)) {
 			error(remote_branch
-			      ? _("Error deleting remote branch '%s'")
+			      ? _("Error deleting remote-tracking branch '%s'")
 			      : _("Error deleting branch '%s'"),
 			      bname.buf);
 			ret = 1;
@@ -265,7 +263,7 @@ static int delete_branches(int argc, const char **argv, int force, int kinds,
 		}
 		if (!quiet) {
 			printf(remote_branch
-			       ? _("Deleted remote branch %s (was %s).\n")
+			       ? _("Deleted remote-tracking branch %s (was %s).\n")
 			       : _("Deleted branch %s (was %s).\n"),
 			       bname.buf,
 			       (flags & REF_ISBROKEN) ? "broken"
@@ -328,7 +326,7 @@ static int match_patterns(const char **pattern, const char *refname)
 	return 0;
 }
 
-static int append_ref(const char *refname, const unsigned char *sha1, int flags, void *cb_data)
+static int append_ref(const char *refname, const struct object_id *oid, int flags, void *cb_data)
 {
 	struct append_ref_cb *cb = (struct append_ref_cb *)(cb_data);
 	struct ref_list *ref_list = cb->ref_list;
@@ -365,7 +363,7 @@ static int append_ref(const char *refname, const unsigned char *sha1, int flags,
 
 	commit = NULL;
 	if (ref_list->verbose || ref_list->with_commit || merge_filter != NO_FILTER) {
-		commit = lookup_commit_reference_gently(sha1, 1);
+		commit = lookup_commit_reference_gently(oid->hash, 1);
 		if (!commit) {
 			cb->ret = error(_("branch '%s' does not point at a commit"), refname);
 			return 0;
@@ -427,25 +425,19 @@ static void fill_tracking_info(struct strbuf *stat, const char *branch_name,
 	int ours, theirs;
 	char *ref = NULL;
 	struct branch *branch = branch_get(branch_name);
+	const char *upstream;
 	struct strbuf fancy = STRBUF_INIT;
 	int upstream_is_gone = 0;
 	int added_decoration = 1;
 
-	switch (stat_tracking_info(branch, &ours, &theirs)) {
-	case 0:
-		/* no base */
-		return;
-	case -1:
-		/* with "gone" base */
+	if (stat_tracking_info(branch, &ours, &theirs, &upstream) < 0) {
+		if (!upstream)
+			return;
 		upstream_is_gone = 1;
-		break;
-	default:
-		/* with base */
-		break;
 	}
 
 	if (show_upstream_ref) {
-		ref = shorten_unambiguous_ref(branch->merge[0]->dst, 0);
+		ref = shorten_unambiguous_ref(upstream, 0);
 		if (want_color(branch_use_color))
 			strbuf_addf(&fancy, "%s%s%s",
 					branch_get_color(BRANCH_COLOR_UPSTREAM),

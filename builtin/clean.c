@@ -314,7 +314,6 @@ static void print_highlight_menu_stuff(struct menu_stuff *stuff, int **chosen)
 {
 	struct string_list menu_list = STRING_LIST_INIT_DUP;
 	struct strbuf menu = STRBUF_INIT;
-	struct strbuf buf = STRBUF_INIT;
 	struct menu_item *menu_item;
 	struct string_list_item *string_list_item;
 	int i;
@@ -363,7 +362,6 @@ static void print_highlight_menu_stuff(struct menu_stuff *stuff, int **chosen)
 	pretty_print_menus(&menu_list);
 
 	strbuf_release(&menu);
-	strbuf_release(&buf);
 	string_list_clear(&menu_list, 0);
 }
 
@@ -941,14 +939,14 @@ int cmd_clean(int argc, const char **argv, const char *prefix)
 		if (!cache_name_is_other(ent->name, ent->len))
 			continue;
 
-		if (lstat(ent->name, &st))
-			die_errno("Cannot lstat '%s'", ent->name);
-
 		if (pathspec.nr)
 			matches = dir_path_match(ent, &pathspec, 0, NULL);
 
 		if (pathspec.nr && !matches)
 			continue;
+
+		if (lstat(ent->name, &st))
+			die_errno("Cannot lstat '%s'", ent->name);
 
 		if (S_ISDIR(st.st_mode) && !remove_directories &&
 		    matches != MATCHED_EXACTLY)

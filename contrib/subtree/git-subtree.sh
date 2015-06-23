@@ -26,7 +26,7 @@ b,branch=     create a new branch from the split subtree
 ignore-joins  ignore prior --rejoin commits
 onto=         try connecting new tree to an existing one
 rejoin        merge the new branch back into HEAD
- options for 'add', 'merge', 'pull' and 'push'
+ options for 'add', 'merge', and 'pull'
 squash        merge subtree changes as a single commit
 "
 eval "$(echo "$OPTS_SPEC" | git rev-parse --parseopt -- "$@" || echo exit $?)"
@@ -51,14 +51,21 @@ prefix=
 debug()
 {
 	if [ -n "$debug" ]; then
-		echo "$@" >&2
+		printf "%s\n" "$*" >&2
 	fi
 }
 
 say()
 {
 	if [ -z "$quiet" ]; then
-		echo "$@" >&2
+		printf "%s\n" "$*" >&2
+	fi
+}
+
+progress()
+{
+	if [ -z "$quiet" ]; then
+		printf "%s\r" "$*" >&2
 	fi
 }
 
@@ -599,7 +606,7 @@ cmd_split()
 	eval "$grl" |
 	while read rev parents; do
 		revcount=$(($revcount + 1))
-		say -n "$revcount/$revmax ($createcount)"
+		progress "$revcount/$revmax ($createcount)"
 		debug "Processing commit: $rev"
 		exists=$(cache_get $rev)
 		if [ -n "$exists" ]; then
