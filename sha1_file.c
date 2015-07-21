@@ -443,6 +443,7 @@ void prepare_alt_odb(void)
 	read_info_alternates(get_object_directory(), 0);
 }
 
+/* Returns 1 if we have successfully freshened the file, 0 otherwise. */
 static int freshen_file(const char *fn)
 {
 	struct utimbuf t;
@@ -450,11 +451,18 @@ static int freshen_file(const char *fn)
 	return !utime(fn, &t);
 }
 
+/*
+ * All of the check_and_freshen functions return 1 if the file exists and was
+ * freshened (if freshening was requested), 0 otherwise. If they return
+ * 0, you should not assume that it is safe to skip a write of the object (it
+ * either does not exist on disk, or has a stale mtime and may be subject to
+ * pruning).
+ */
 static int check_and_freshen_file(const char *fn, int freshen)
 {
 	if (access(fn, F_OK))
 		return 0;
-	if (freshen && freshen_file(fn))
+	if (freshen && !freshen_file(fn))
 		return 0;
 	return 1;
 }
@@ -3575,14 +3583,19 @@ int for_each_packed_object(each_packed_object_fn cb, void *data, unsigned flags)
 {
 	struct packed_git *p;
 	int r = 0;
+	int pack_errors = 0;
 
 	prepare_packed_git();
 	for (p = packed_git; p; p = p->next) {
 		if ((flags & FOR_EACH_OBJECT_LOCAL_ONLY) && !p->pack_local)
 			continue;
+		if (open_pack_index(p)) {
+			pack_errors = 1;
+			continue;
+		}
 		r = for_each_object_in_pack(p, cb, data);
 		if (r)
 			break;
 	}
-	return r;
+	return r ? r : pack_errors;
 }
