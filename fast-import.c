@@ -134,16 +134,17 @@ Format of STDIN stream:
   ts    ::= # time since the epoch in seconds, ascii base10 notation;
   tz    ::= # GIT style timezone;
 
-     # note: comments, ls and cat requests may appear anywhere
-     # in the input, except within a data command.  Any form
-     # of the data command always escapes the related input
-     # from comment processing.
+     # note: comments, get-mark, ls-tree, and cat-blob requests may
+     # appear anywhere in the input, except within a data command. Any
+     # form of the data command always escapes the related input from
+     # comment processing.
      #
      # In case it is not clear, the '#' that starts the comment
      # must be the first character on that line (an lf
      # preceded it).
      #
 
+  get_mark ::= 'get-mark' sp idnum lf;
   cat_blob ::= 'cat-blob' sp (hexsha1 | idnum) lf;
   ls_tree  ::= 'ls' sp (hexsha1 | idnum) sp path_str lf;
 
@@ -372,6 +373,7 @@ static volatile sig_atomic_t checkpoint_requested;
 static int cat_blob_fd = STDOUT_FILENO;
 
 static void parse_argv(void);
+static void parse_get_mark(const char *p);
 static void parse_cat_blob(const char *p);
 static void parse_ls(const char *p, struct branch *b);
 
@@ -421,7 +423,7 @@ static void write_crash_report(const char *err)
 	fprintf(rpt, "fast-import crash report:\n");
 	fprintf(rpt, "    fast-import process: %"PRIuMAX"\n", (uintmax_t) getpid());
 	fprintf(rpt, "    parent process     : %"PRIuMAX"\n", (uintmax_t) getppid());
-	fprintf(rpt, "    at %s\n", show_date(time(NULL), 0, DATE_LOCAL));
+	fprintf(rpt, "    at %s\n", show_date(time(NULL), 0, DATE_MODE(LOCAL)));
 	fputc('\n', rpt);
 
 	fputs("fatal: ", rpt);
@@ -1692,13 +1694,13 @@ static int update_branch(struct branch *b)
 	unsigned char old_sha1[20];
 	struct strbuf err = STRBUF_INIT;
 
-	if (read_ref(b->name, old_sha1))
-		hashclr(old_sha1);
 	if (is_null_sha1(b->sha1)) {
 		if (b->delete)
-			delete_ref(b->name, old_sha1, 0);
+			delete_ref(b->name, NULL, 0);
 		return 0;
 	}
+	if (read_ref(b->name, old_sha1))
+		hashclr(old_sha1);
 	if (!force_update && !is_null_sha1(old_sha1)) {
 		struct commit *old_cmit, *new_cmit;
 
@@ -1906,6 +1908,10 @@ static int read_next_command(void)
 			rc->next = cmd_hist.prev;
 			rc->prev->next = rc;
 			cmd_tail = rc;
+		}
+		if (skip_prefix(command_buf.buf, "get-mark ", &p)) {
+			parse_get_mark(p);
+			continue;
 		}
 		if (skip_prefix(command_buf.buf, "cat-blob ", &p)) {
 			parse_cat_blob(p);
@@ -2588,14 +2594,12 @@ static int parse_from(struct branch *b)
 {
 	const char *from;
 	struct branch *s;
+	unsigned char sha1[20];
 
 	if (!skip_prefix(command_buf.buf, "from ", &from))
 		return 0;
 
-	if (b->branch_tree.tree) {
-		release_tree_content_recursive(b->branch_tree.tree);
-		b->branch_tree.tree = NULL;
-	}
+	hashcpy(sha1, b->branch_tree.versions[1].sha1);
 
 	s = lookup_branch(from);
 	if (b == s)
@@ -2610,14 +2614,16 @@ static int parse_from(struct branch *b)
 		struct object_entry *oe = find_mark(idnum);
 		if (oe->type != OBJ_COMMIT)
 			die("Mark :%" PRIuMAX " not a commit", idnum);
-		hashcpy(b->sha1, oe->idx.sha1);
-		if (oe->pack_id != MAX_PACK_ID) {
-			unsigned long size;
-			char *buf = gfi_unpack_entry(oe, &size);
-			parse_from_commit(b, buf, size);
-			free(buf);
-		} else
-			parse_from_existing(b);
+		if (hashcmp(b->sha1, oe->idx.sha1)) {
+			hashcpy(b->sha1, oe->idx.sha1);
+			if (oe->pack_id != MAX_PACK_ID) {
+				unsigned long size;
+				char *buf = gfi_unpack_entry(oe, &size);
+				parse_from_commit(b, buf, size);
+				free(buf);
+			} else
+				parse_from_existing(b);
+		}
 	} else if (!get_sha1(from, b->sha1)) {
 		parse_from_existing(b);
 		if (is_null_sha1(b->sha1))
@@ -2625,6 +2631,11 @@ static int parse_from(struct branch *b)
 	}
 	else
 		die("Invalid ref name or SHA1 expression: %s", from);
+
+	if (b->branch_tree.tree && hashcmp(sha1, b->branch_tree.versions[1].sha1)) {
+		release_tree_content_recursive(b->branch_tree.tree);
+		b->branch_tree.tree = NULL;
+	}
 
 	read_next_command();
 	return 1;
@@ -2917,6 +2928,23 @@ static void cat_blob(struct object_entry *oe, unsigned char sha1[20])
 		last_blob.depth = oe->depth;
 	} else
 		free(buf);
+}
+
+static void parse_get_mark(const char *p)
+{
+	struct object_entry *oe = oe;
+	char output[42];
+
+	/* get-mark SP <object> LF */
+	if (*p != ':')
+		die("Not a mark: %s", p);
+
+	oe = find_mark(parse_mark_ref_eol(p));
+	if (!oe)
+		die("Unknown mark: %s", command_buf.buf);
+
+	snprintf(output, sizeof(output), "%s\n", sha1_to_hex(oe->idx.sha1));
+	cat_blob_write(output, 41);
 }
 
 static void parse_cat_blob(const char *p)
@@ -3240,6 +3268,8 @@ static int parse_one_feature(const char *feature, int from_stream)
 		option_import_marks(arg, from_stream, 1);
 	} else if (skip_prefix(feature, "export-marks=", &arg)) {
 		option_export_marks(arg);
+	} else if (!strcmp(feature, "get-mark")) {
+		; /* Don't die - this feature is supported */
 	} else if (!strcmp(feature, "cat-blob")) {
 		; /* Don't die - this feature is supported */
 	} else if (!strcmp(feature, "relative-marks")) {
