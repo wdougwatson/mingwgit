@@ -407,7 +407,7 @@ static void dump_marks_helper(FILE *, uintmax_t, struct mark_set *);
 
 static void write_crash_report(const char *err)
 {
-	const char *loc = git_path("fast_import_crash_%"PRIuMAX, (uintmax_t) getpid());
+	char *loc = git_pathdup("fast_import_crash_%"PRIuMAX, (uintmax_t) getpid());
 	FILE *rpt = fopen(loc, "w");
 	struct branch *b;
 	unsigned long lu;
@@ -415,6 +415,7 @@ static void write_crash_report(const char *err)
 
 	if (!rpt) {
 		error("can't write crash report %s: %s", loc, strerror(errno));
+		free(loc);
 		return;
 	}
 
@@ -488,6 +489,7 @@ static void write_crash_report(const char *err)
 	fputs("-------------------\n", rpt);
 	fputs("END OF CRASH REPORT\n", rpt);
 	fclose(rpt);
+	free(loc);
 }
 
 static void end_packfile(void);
@@ -923,12 +925,12 @@ static char *keep_pack(const char *curr_index_name)
 
 	snprintf(name, sizeof(name), "%s/pack/pack-%s.pack",
 		 get_object_directory(), sha1_to_hex(pack_data->sha1));
-	if (move_temp_to_file(pack_data->pack_name, name))
+	if (finalize_object_file(pack_data->pack_name, name))
 		die("cannot store pack file");
 
 	snprintf(name, sizeof(name), "%s/pack/pack-%s.idx",
 		 get_object_directory(), sha1_to_hex(pack_data->sha1));
-	if (move_temp_to_file(curr_index_name, name))
+	if (finalize_object_file(curr_index_name, name))
 		die("cannot store index file");
 	free((void *)curr_index_name);
 	return name;

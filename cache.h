@@ -708,21 +708,58 @@ extern int check_repository_format(void);
 #define DATA_CHANGED    0x0020
 #define TYPE_CHANGED    0x0040
 
+/*
+ * Return a statically allocated filename, either generically (mkpath), in
+ * the repository directory (git_path), or in a submodule's repository
+ * directory (git_path_submodule). In all cases, note that the result
+ * may be overwritten by another call to _any_ of the functions. Consider
+ * using the safer "dup" or "strbuf" formats below (in some cases, the
+ * unsafe versions have already been removed).
+ */
+extern const char *mkpath(const char *fmt, ...) __attribute__((format (printf, 1, 2)));
+extern const char *git_path(const char *fmt, ...) __attribute__((format (printf, 1, 2)));
+
 extern char *mksnpath(char *buf, size_t n, const char *fmt, ...)
 	__attribute__((format (printf, 3, 4)));
 extern void strbuf_git_path(struct strbuf *sb, const char *fmt, ...)
 	__attribute__((format (printf, 2, 3)));
+extern void strbuf_git_path_submodule(struct strbuf *sb, const char *path,
+				      const char *fmt, ...)
+	__attribute__((format (printf, 3, 4)));
 extern char *git_pathdup(const char *fmt, ...)
 	__attribute__((format (printf, 1, 2)));
 extern char *mkpathdup(const char *fmt, ...)
 	__attribute__((format (printf, 1, 2)));
-
-/* Return a statically allocated filename matching the sha1 signature */
-extern const char *mkpath(const char *fmt, ...) __attribute__((format (printf, 1, 2)));
-extern const char *git_path(const char *fmt, ...) __attribute__((format (printf, 1, 2)));
-extern const char *git_path_submodule(const char *path, const char *fmt, ...)
+extern char *git_pathdup_submodule(const char *path, const char *fmt, ...)
 	__attribute__((format (printf, 2, 3)));
+
 extern void report_linked_checkout_garbage(void);
+
+/*
+ * You can define a static memoized git path like:
+ *
+ *    static GIT_PATH_FUNC(git_path_foo, "FOO");
+ *
+ * or use one of the global ones below.
+ */
+#define GIT_PATH_FUNC(func, filename) \
+	const char *func(void) \
+	{ \
+		static char *ret; \
+		if (!ret) \
+			ret = git_pathdup(filename); \
+		return ret; \
+	}
+
+const char *git_path_cherry_pick_head(void);
+const char *git_path_revert_head(void);
+const char *git_path_squash_msg(void);
+const char *git_path_merge_msg(void);
+const char *git_path_merge_rr(void);
+const char *git_path_merge_mode(void);
+const char *git_path_merge_head(void);
+const char *git_path_fetch_head(void);
+const char *git_path_shallow(void);
 
 /*
  * Return the name of the file in the local object database that would
@@ -945,7 +982,7 @@ extern int do_check_packed_object_crc;
 
 extern int check_sha1_signature(const unsigned char *sha1, void *buf, unsigned long size, const char *type);
 
-extern int move_temp_to_file(const char *tmpfile, const char *filename);
+extern int finalize_object_file(const char *tmpfile, const char *filename);
 
 extern int has_sha1_pack(const unsigned char *sha1);
 

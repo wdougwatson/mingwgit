@@ -1078,10 +1078,9 @@ static void prep_exclude(struct dir_struct *dir, const char *base, int baselen)
 		    (!untracked || !untracked->valid ||
 		     /*
 		      * .. and .gitignore does not exist before
-		      * (i.e. null exclude_sha1 and skip_worktree is
-		      * not set). Then we can skip loading .gitignore,
-		      * which would result in ENOENT anyway.
-		      * skip_worktree is taken care in read_directory()
+		      * (i.e. null exclude_sha1). Then we can skip
+		      * loading .gitignore, which would result in
+		      * ENOENT anyway.
 		      */
 		     !is_null_sha1(untracked->exclude_sha1))) {
 			/*
@@ -1880,7 +1879,6 @@ static struct untracked_cache_dir *validate_untracked_cache(struct dir_struct *d
 						      const struct pathspec *pathspec)
 {
 	struct untracked_cache_dir *root;
-	int i;
 
 	if (!dir->untracked || getenv("GIT_DISABLE_UNTRACKED_CACHE"))
 		return NULL;
@@ -1931,15 +1929,6 @@ static struct untracked_cache_dir *validate_untracked_cache(struct dir_struct *d
 	 */
 	if (dir->exclude_list_group[EXC_CMDL].nr)
 		return NULL;
-
-	/*
-	 * An optimization in prep_exclude() does not play well with
-	 * CE_SKIP_WORKTREE. It's a rare case anyway, if a single
-	 * entry has that bit set, disable the whole untracked cache.
-	 */
-	for (i = 0; i < active_nr; i++)
-		if (ce_skip_worktree(active_cache[i]))
-			return NULL;
 
 	if (!ident_in_untracked(dir->untracked)) {
 		warning(_("Untracked cache is disabled on this system."));
@@ -2185,6 +2174,8 @@ int remove_dir_recursively(struct strbuf *path, int flag)
 	return remove_dir_recurse(path, flag, NULL);
 }
 
+static GIT_PATH_FUNC(git_path_info_exclude, "info/exclude")
+
 void setup_standard_excludes(struct dir_struct *dir)
 {
 	const char *path;
@@ -2199,7 +2190,7 @@ void setup_standard_excludes(struct dir_struct *dir)
 					 dir->untracked ? &dir->ss_excludes_file : NULL);
 
 	/* per repository user preference */
-	path = git_path("info/exclude");
+	path = git_path_info_exclude();
 	if (!access_or_warn(path, R_OK, 0))
 		add_excludes_from_file_1(dir, path,
 					 dir->untracked ? &dir->ss_info_exclude : NULL);
