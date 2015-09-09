@@ -10,6 +10,7 @@
 #include "dir.h"
 #include "run-command.h"
 #include "quote.h"
+#include "tempfile.h"
 #include "lockfile.h"
 #include "cache-tree.h"
 #include "refs.h"
@@ -98,6 +99,12 @@ enum scissors_type {
 	SCISSORS_TRUE        /* pass --scissors to git-mailinfo */
 };
 
+enum signoff_type {
+	SIGNOFF_FALSE = 0,
+	SIGNOFF_TRUE = 1,
+	SIGNOFF_EXPLICIT /* --signoff was set on the command-line */
+};
+
 struct am_state {
 	/* state directory path */
 	char *dir;
@@ -123,7 +130,7 @@ struct am_state {
 	int interactive;
 	int threeway;
 	int quiet;
-	int signoff;
+	int signoff; /* enum signoff_type */
 	int utf8;
 	int keep; /* enum keep_type */
 	int message_id;
@@ -185,6 +192,27 @@ static void am_state_release(struct am_state *state)
 static inline const char *am_path(const struct am_state *state, const char *path)
 {
 	return mkpath("%s/%s", state->dir, path);
+}
+
+/**
+ * For convenience to call write_file()
+ */
+static int write_state_text(const struct am_state *state,
+			    const char *name, const char *string)
+{
+	return write_file(am_path(state, name), "%s", string);
+}
+
+static int write_state_count(const struct am_state *state,
+			     const char *name, int value)
+{
+	return write_file(am_path(state, name), "%d", value);
+}
+
+static int write_state_bool(const struct am_state *state,
+			    const char *name, int value)
+{
+	return write_state_text(state, name, value ? "t" : "f");
 }
 
 /**
@@ -356,7 +384,7 @@ static void write_author_script(const struct am_state *state)
 	sq_quote_buf(&sb, state->author_date);
 	strbuf_addch(&sb, '\n');
 
-	write_file(am_path(state, "author-script"), 1, "%s", sb.buf);
+	write_state_text(state, "author-script", sb.buf);
 
 	strbuf_release(&sb);
 }
@@ -994,13 +1022,10 @@ static void am_setup(struct am_state *state, enum patch_format patch_format,
 	if (state->rebasing)
 		state->threeway = 1;
 
-	write_file(am_path(state, "threeway"), 1, state->threeway ? "t" : "f");
-
-	write_file(am_path(state, "quiet"), 1, state->quiet ? "t" : "f");
-
-	write_file(am_path(state, "sign"), 1, state->signoff ? "t" : "f");
-
-	write_file(am_path(state, "utf8"), 1, state->utf8 ? "t" : "f");
+	write_state_bool(state, "threeway", state->threeway);
+	write_state_bool(state, "quiet", state->quiet);
+	write_state_bool(state, "sign", state->signoff);
+	write_state_bool(state, "utf8", state->utf8);
 
 	switch (state->keep) {
 	case KEEP_FALSE:
@@ -1016,9 +1041,8 @@ static void am_setup(struct am_state *state, enum patch_format patch_format,
 		die("BUG: invalid value for state->keep");
 	}
 
-	write_file(am_path(state, "keep"), 1, "%s", str);
-
-	write_file(am_path(state, "messageid"), 1, state->message_id ? "t" : "f");
+	write_state_text(state, "keep", str);
+	write_state_bool(state, "messageid", state->message_id);
 
 	switch (state->scissors) {
 	case SCISSORS_UNSET:
@@ -1033,24 +1057,23 @@ static void am_setup(struct am_state *state, enum patch_format patch_format,
 	default:
 		die("BUG: invalid value for state->scissors");
 	}
-
-	write_file(am_path(state, "scissors"), 1, "%s", str);
+	write_state_text(state, "scissors", str);
 
 	sq_quote_argv(&sb, state->git_apply_opts.argv, 0);
-	write_file(am_path(state, "apply-opt"), 1, "%s", sb.buf);
+	write_state_text(state, "apply-opt", sb.buf);
 
 	if (state->rebasing)
-		write_file(am_path(state, "rebasing"), 1, "%s", "");
+		write_state_text(state, "rebasing", "");
 	else
-		write_file(am_path(state, "applying"), 1, "%s", "");
+		write_state_text(state, "applying", "");
 
 	if (!get_sha1("HEAD", curr_head)) {
-		write_file(am_path(state, "abort-safety"), 1, "%s", sha1_to_hex(curr_head));
+		write_state_text(state, "abort-safety", sha1_to_hex(curr_head));
 		if (!state->rebasing)
 			update_ref("am", "ORIG_HEAD", curr_head, NULL, 0,
 					UPDATE_REFS_DIE_ON_ERR);
 	} else {
-		write_file(am_path(state, "abort-safety"), 1, "%s", "");
+		write_state_text(state, "abort-safety", "");
 		if (!state->rebasing)
 			delete_ref("ORIG_HEAD", NULL, 0);
 	}
@@ -1060,9 +1083,8 @@ static void am_setup(struct am_state *state, enum patch_format patch_format,
 	 * session is in progress, they should be written last.
 	 */
 
-	write_file(am_path(state, "next"), 1, "%d", state->cur);
-
-	write_file(am_path(state, "last"), 1, "%d", state->last);
+	write_state_count(state, "next", state->cur);
+	write_state_count(state, "last", state->last);
 
 	strbuf_release(&sb);
 }
@@ -1095,12 +1117,12 @@ static void am_next(struct am_state *state)
 	unlink(am_path(state, "original-commit"));
 
 	if (!get_sha1("HEAD", head))
-		write_file(am_path(state, "abort-safety"), 1, "%s", sha1_to_hex(head));
+		write_state_text(state, "abort-safety", sha1_to_hex(head));
 	else
-		write_file(am_path(state, "abort-safety"), 1, "%s", "");
+		write_state_text(state, "abort-safety", "");
 
 	state->cur++;
-	write_file(am_path(state, "next"), 1, "%d", state->cur);
+	write_state_count(state, "next", state->cur);
 }
 
 /**
@@ -1183,6 +1205,45 @@ static void NORETURN die_user_resolve(const struct am_state *state)
 	}
 
 	exit(128);
+}
+
+static void am_signoff(struct strbuf *sb)
+{
+	char *cp;
+	struct strbuf mine = STRBUF_INIT;
+
+	/* Does it end with our own sign-off? */
+	strbuf_addf(&mine, "\n%s%s\n",
+		    sign_off_header,
+		    fmt_name(getenv("GIT_COMMITTER_NAME"),
+			     getenv("GIT_COMMITTER_EMAIL")));
+	if (mine.len < sb->len &&
+	    !strcmp(mine.buf, sb->buf + sb->len - mine.len))
+		goto exit; /* no need to duplicate */
+
+	/* Does it have any Signed-off-by: in the text */
+	for (cp = sb->buf;
+	     cp && *cp && (cp = strstr(cp, sign_off_header)) != NULL;
+	     cp = strchr(cp, '\n')) {
+		if (sb->buf == cp || cp[-1] == '\n')
+			break;
+	}
+
+	strbuf_addstr(sb, mine.buf + !!cp);
+exit:
+	strbuf_release(&mine);
+}
+
+/**
+ * Appends signoff to the "msg" field of the am_state.
+ */
+static void am_append_signoff(struct am_state *state)
+{
+	struct strbuf sb = STRBUF_INIT;
+
+	strbuf_attach(&sb, state->msg, state->msg_len, state->msg_len);
+	am_signoff(&sb);
+	state->msg = strbuf_detach(&sb, &state->msg_len);
 }
 
 /**
@@ -1285,7 +1346,7 @@ static int parse_mail(struct am_state *state, const char *mail)
 	stripspace(&msg, 0);
 
 	if (state->signoff)
-		append_signoff(&msg, 0, 0);
+		am_signoff(&msg);
 
 	assert(!state->author_name);
 	state->author_name = strbuf_detach(&author_name, NULL);
@@ -1461,8 +1522,7 @@ static int parse_mail_rebase(struct am_state *state, const char *mail)
 	write_commit_patch(state, commit);
 
 	hashcpy(state->orig_commit, commit_sha1);
-	write_file(am_path(state, "original-commit"), 1, "%s",
-			sha1_to_hex(commit_sha1));
+	write_state_text(state, "original-commit", sha1_to_hex(commit_sha1));
 
 	return 0;
 }
@@ -1764,7 +1824,7 @@ static void am_run(struct am_state *state, int resume)
 	refresh_and_write_cache();
 
 	if (index_has_changes(&sb)) {
-		write_file(am_path(state, "dirtyindex"), 1, "t");
+		write_state_bool(state, "dirtyindex", 1);
 		die(_("Dirty index: cannot apply patches (dirty: %s)"), sb.buf);
 	}
 
@@ -1779,7 +1839,6 @@ static void am_run(struct am_state *state, int resume)
 
 		if (resume) {
 			validate_resume_state(state);
-			resume = 0;
 		} else {
 			int skip;
 
@@ -1841,6 +1900,10 @@ static void am_run(struct am_state *state, int resume)
 
 next:
 		am_next(state);
+
+		if (resume)
+			am_load(state);
+		resume = 0;
 	}
 
 	if (!is_empty_file(am_path(state, "rewritten"))) {
@@ -1895,6 +1958,7 @@ static void am_resolve(struct am_state *state)
 
 next:
 	am_next(state);
+	am_load(state);
 	am_run(state, 0);
 }
 
@@ -1940,15 +2004,48 @@ static int fast_forward_to(struct tree *head, struct tree *remote, int reset)
 }
 
 /**
+ * Merges a tree into the index. The index's stat info will take precedence
+ * over the merged tree's. Returns 0 on success, -1 on failure.
+ */
+static int merge_tree(struct tree *tree)
+{
+	struct lock_file *lock_file;
+	struct unpack_trees_options opts;
+	struct tree_desc t[1];
+
+	if (parse_tree(tree))
+		return -1;
+
+	lock_file = xcalloc(1, sizeof(struct lock_file));
+	hold_locked_index(lock_file, 1);
+
+	memset(&opts, 0, sizeof(opts));
+	opts.head_idx = 1;
+	opts.src_index = &the_index;
+	opts.dst_index = &the_index;
+	opts.merge = 1;
+	opts.fn = oneway_merge;
+	init_tree_desc(&t[0], tree->buffer, tree->size);
+
+	if (unpack_trees(1, t, &opts)) {
+		rollback_lock_file(lock_file);
+		return -1;
+	}
+
+	if (write_locked_index(&the_index, lock_file, COMMIT_LOCK))
+		die(_("unable to write new index file"));
+
+	return 0;
+}
+
+/**
  * Clean the index without touching entries that are not modified between
  * `head` and `remote`.
  */
 static int clean_index(const unsigned char *head, const unsigned char *remote)
 {
-	struct lock_file *lock_file;
 	struct tree *head_tree, *remote_tree, *index_tree;
 	unsigned char index[GIT_SHA1_RAWSZ];
-	struct pathspec pathspec;
 
 	head_tree = parse_tree_indirect(head);
 	if (!head_tree)
@@ -1973,18 +2070,8 @@ static int clean_index(const unsigned char *head, const unsigned char *remote)
 	if (fast_forward_to(index_tree, remote_tree, 0))
 		return -1;
 
-	memset(&pathspec, 0, sizeof(pathspec));
-
-	lock_file = xcalloc(1, sizeof(struct lock_file));
-	hold_locked_index(lock_file, 1);
-
-	if (read_tree(remote_tree, 0, &pathspec)) {
-		rollback_lock_file(lock_file);
+	if (merge_tree(remote_tree))
 		return -1;
-	}
-
-	if (write_locked_index(&the_index, lock_file, COMMIT_LOCK))
-		die(_("unable to write new index file"));
 
 	remove_branch_state();
 
@@ -1997,11 +2084,6 @@ static int clean_index(const unsigned char *head, const unsigned char *remote)
 static void am_rerere_clear(void)
 {
 	struct string_list merge_rr = STRING_LIST_INIT_DUP;
-	int fd = setup_rerere(&merge_rr, 0);
-
-	if (fd < 0)
-		return;
-
 	rerere_clear(&merge_rr);
 	string_list_clear(&merge_rr, 1);
 }
@@ -2022,6 +2104,7 @@ static void am_skip(struct am_state *state)
 		die(_("failed to clean index"));
 
 	am_next(state);
+	am_load(state);
 	am_run(state, 0);
 }
 
@@ -2132,6 +2215,7 @@ int cmd_am(int argc, const char **argv, const char *prefix)
 	int keep_cr = -1;
 	int patch_format = PATCH_FORMAT_UNKNOWN;
 	enum resume_mode resume = RESUME_FALSE;
+	int in_progress;
 
 	const char * const usage[] = {
 		N_("git am [options] [(<mbox>|<Maildir>)...]"),
@@ -2143,12 +2227,13 @@ int cmd_am(int argc, const char **argv, const char *prefix)
 		OPT_BOOL('i', "interactive", &state.interactive,
 			N_("run interactively")),
 		OPT_HIDDEN_BOOL('b', "binary", &binary,
-			N_("(historical option -- no-op")),
+			N_("historical option -- no-op")),
 		OPT_BOOL('3', "3way", &state.threeway,
 			N_("allow fall back on 3way merging if needed")),
 		OPT__QUIET(&state.quiet, N_("be quiet")),
-		OPT_BOOL('s', "signoff", &state.signoff,
-			N_("add a Signed-off-by line to the commit message")),
+		OPT_SET_INT('s', "signoff", &state.signoff,
+			N_("add a Signed-off-by line to the commit message"),
+			SIGNOFF_EXPLICIT),
 		OPT_BOOL('u', "utf8", &state.utf8,
 			N_("recode into utf8 (default)")),
 		OPT_SET_INT('k', "keep", &state.keep,
@@ -2227,6 +2312,10 @@ int cmd_am(int argc, const char **argv, const char *prefix)
 
 	am_state_init(&state, git_path("rebase-apply"));
 
+	in_progress = am_in_progress(&state);
+	if (in_progress)
+		am_load(&state);
+
 	argc = parse_options(argc, argv, prefix, options, usage, 0);
 
 	if (binary >= 0)
@@ -2239,7 +2328,7 @@ int cmd_am(int argc, const char **argv, const char *prefix)
 	if (read_index_preload(&the_index, NULL) < 0)
 		die(_("failed to read the index"));
 
-	if (am_in_progress(&state)) {
+	if (in_progress) {
 		/*
 		 * Catch user error to feed us patches when there is a session
 		 * in progress:
@@ -2258,7 +2347,8 @@ int cmd_am(int argc, const char **argv, const char *prefix)
 		if (resume == RESUME_FALSE)
 			resume = RESUME_APPLY;
 
-		am_load(&state);
+		if (state.signoff == SIGNOFF_EXPLICIT)
+			am_append_signoff(&state);
 	} else {
 		struct argv_array paths = ARGV_ARRAY_INIT;
 		int i;

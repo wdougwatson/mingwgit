@@ -1429,6 +1429,7 @@ extern int git_config_with_options(config_fn_t fn, void *,
 				   int respect_includes);
 extern int git_config_early(config_fn_t fn, void *, const char *repo_config);
 extern int git_parse_ulong(const char *, unsigned long *);
+extern int git_parse_maybe_bool(const char *);
 extern int git_config_int(const char *, const char *);
 extern int64_t git_config_int64(const char *, const char *);
 extern unsigned long git_config_ulong(const char *, const char *);
@@ -1440,6 +1441,7 @@ extern int git_config_pathname(const char **, const char *, const char *);
 extern int git_config_set_in_file(const char *, const char *, const char *);
 extern int git_config_set(const char *, const char *);
 extern int git_config_parse_key(const char *, char **, int *);
+extern int git_config_key_is_valid(const char *key);
 extern int git_config_set_multivar(const char *, const char *, const char *, int);
 extern int git_config_set_multivar_in_file(const char *, const char *, const char *, const char *, int);
 extern int git_config_rename_section(const char *, const char *);
@@ -1576,8 +1578,9 @@ static inline ssize_t write_str_in_full(int fd, const char *str)
 {
 	return write_in_full(fd, str, strlen(str));
 }
-__attribute__((format (printf, 3, 4)))
-extern int write_file(const char *path, int fatal, const char *fmt, ...);
+
+extern int write_file(const char *path, const char *fmt, ...);
+extern int write_file_gently(const char *path, const char *fmt, ...);
 
 /* pager.c */
 extern void setup_pager(void);

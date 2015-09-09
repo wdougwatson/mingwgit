@@ -618,7 +618,7 @@ unsigned long git_config_ulong(const char *name, const char *value)
 	return ret;
 }
 
-static int git_config_maybe_bool_text(const char *name, const char *value)
+int git_parse_maybe_bool(const char *value)
 {
 	if (!value)
 		return 1;
@@ -637,7 +637,7 @@ static int git_config_maybe_bool_text(const char *name, const char *value)
 
 int git_config_maybe_bool(const char *name, const char *value)
 {
-	int v = git_config_maybe_bool_text(name, value);
+	int v = git_parse_maybe_bool(value);
 	if (0 <= v)
 		return v;
 	if (git_parse_int(value, &v))
@@ -647,7 +647,7 @@ int git_config_maybe_bool(const char *name, const char *value)
 
 int git_config_bool_or_int(const char *name, const char *value, int *is_bool)
 {
-	int v = git_config_maybe_bool_text(name, value);
+	int v = git_parse_maybe_bool(value);
 	if (0 <= v) {
 		*is_bool = 1;
 		return v;
@@ -1848,7 +1848,7 @@ int git_config_set(const char *key, const char *value)
  * baselen - pointer to int which will hold the length of the
  *           section + subsection part, can be NULL
  */
-int git_config_parse_key(const char *key, char **store_key, int *baselen_)
+static int git_config_parse_key_1(const char *key, char **store_key, int *baselen_, int quiet)
 {
 	int i, dot, baselen;
 	const char *last_dot = strrchr(key, '.');
@@ -1859,12 +1859,14 @@ int git_config_parse_key(const char *key, char **store_key, int *baselen_)
 	 */
 
 	if (last_dot == NULL || last_dot == key) {
-		error("key does not contain a section: %s", key);
+		if (!quiet)
+			error("key does not contain a section: %s", key);
 		return -CONFIG_NO_SECTION_OR_NAME;
 	}
 
 	if (!last_dot[1]) {
-		error("key does not contain variable name: %s", key);
+		if (!quiet)
+			error("key does not contain variable name: %s", key);
 		return -CONFIG_NO_SECTION_OR_NAME;
 	}
 
@@ -1875,7 +1877,8 @@ int git_config_parse_key(const char *key, char **store_key, int *baselen_)
 	/*
 	 * Validate the key and while at it, lower case it for matching.
 	 */
-	*store_key = xmalloc(strlen(key) + 1);
+	if (store_key)
+		*store_key = xmalloc(strlen(key) + 1);
 
 	dot = 0;
 	for (i = 0; key[i]; i++) {
@@ -1886,24 +1889,40 @@ int git_config_parse_key(const char *key, char **store_key, int *baselen_)
 		if (!dot || i > baselen) {
 			if (!iskeychar(c) ||
 			    (i == baselen + 1 && !isalpha(c))) {
-				error("invalid key: %s", key);
+				if (!quiet)
+					error("invalid key: %s", key);
 				goto out_free_ret_1;
 			}
 			c = tolower(c);
 		} else if (c == '\n') {
-			error("invalid key (newline): %s", key);
+			if (!quiet)
+				error("invalid key (newline): %s", key);
 			goto out_free_ret_1;
 		}
-		(*store_key)[i] = c;
+		if (store_key)
+			(*store_key)[i] = c;
 	}
-	(*store_key)[i] = 0;
+	if (store_key)
+		(*store_key)[i] = 0;
 
 	return 0;
 
 out_free_ret_1:
-	free(*store_key);
-	*store_key = NULL;
+	if (store_key) {
+		free(*store_key);
+		*store_key = NULL;
+	}
 	return -CONFIG_INVALID_KEY;
+}
+
+int git_config_parse_key(const char *key, char **store_key, int *baselen)
+{
+	return git_config_parse_key_1(key, store_key, baselen, 0);
+}
+
+int git_config_key_is_valid(const char *key)
+{
+	return !git_config_parse_key_1(key, NULL, NULL, 1);
 }
 
 /*
@@ -1935,7 +1954,7 @@ int git_config_set_multivar_in_file(const char *config_filename,
 				const char *key, const char *value,
 				const char *value_regex, int multi_replace)
 {
-	int fd = -1, in_fd;
+	int fd = -1, in_fd = -1;
 	int ret;
 	struct lock_file *lock = NULL;
 	char *filename_buf = NULL;
@@ -2065,10 +2084,11 @@ int git_config_set_multivar_in_file(const char *config_filename,
 			goto out_free;
 		}
 		close(in_fd);
+		in_fd = -1;
 
-		if (chmod(lock->filename.buf, st.st_mode & 07777) < 0) {
+		if (chmod(get_lock_file_path(lock), st.st_mode & 07777) < 0) {
 			error("chmod on %s failed: %s",
-				lock->filename.buf, strerror(errno));
+			      get_lock_file_path(lock), strerror(errno));
 			ret = CONFIG_NO_WRITE;
 			goto out_free;
 		}
@@ -2148,10 +2168,12 @@ out_free:
 	free(filename_buf);
 	if (contents)
 		munmap(contents, contents_sz);
+	if (in_fd >= 0)
+		close(in_fd);
 	return ret;
 
 write_err_out:
-	ret = write_error(lock->filename.buf);
+	ret = write_error(get_lock_file_path(lock));
 	goto out_free;
 
 }
@@ -2252,9 +2274,9 @@ int git_config_rename_section_in_file(const char *config_filename,
 
 	fstat(fileno(config_file), &st);
 
-	if (chmod(lock->filename.buf, st.st_mode & 07777) < 0) {
+	if (chmod(get_lock_file_path(lock), st.st_mode & 07777) < 0) {
 		ret = error("chmod on %s failed: %s",
-				lock->filename.buf, strerror(errno));
+			    get_lock_file_path(lock), strerror(errno));
 		goto out;
 	}
 
@@ -2275,7 +2297,7 @@ int git_config_rename_section_in_file(const char *config_filename,
 				}
 				store.baselen = strlen(new_name);
 				if (!store_write_section(out_fd, new_name)) {
-					ret = write_error(lock->filename.buf);
+					ret = write_error(get_lock_file_path(lock));
 					goto out;
 				}
 				/*
@@ -2301,7 +2323,7 @@ int git_config_rename_section_in_file(const char *config_filename,
 			continue;
 		length = strlen(output);
 		if (write_in_full(out_fd, output, length) != length) {
-			ret = write_error(lock->filename.buf);
+			ret = write_error(get_lock_file_path(lock));
 			goto out;
 		}
 	}

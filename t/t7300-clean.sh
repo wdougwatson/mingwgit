@@ -432,9 +432,7 @@ test_expect_success 'nested git work tree' '
 	(
 		cd foo &&
 		git init &&
-		>hello.world
-		git add . &&
-		git commit -a -m nested
+		test_commit nested hello.world
 	) &&
 	(
 		cd bar &&
@@ -443,9 +441,7 @@ test_expect_success 'nested git work tree' '
 	(
 		cd baz/boo &&
 		git init &&
-		>deeper.world
-		git add . &&
-		git commit -a -m deeply.nested
+		test_commit deeply.nested deeper.world
 	) &&
 	git clean -f -d &&
 	test -f foo/.git/index &&
@@ -499,7 +495,7 @@ test_expect_success 'should not clean submodules' '
 	test_path_is_missing to_clean
 '
 
-test_expect_success 'should avoid cleaning possible submodules' '
+test_expect_success POSIXPERM 'should avoid cleaning possible submodules' '
 	rm -fr to_clean possible_sub1 &&
 	mkdir to_clean possible_sub1 &&
 	test_when_finished "rm -rf possible_sub*" &&
@@ -601,9 +597,7 @@ test_expect_success 'force removal of nested git work tree' '
 	(
 		cd foo &&
 		git init &&
-		>hello.world
-		git add . &&
-		git commit -a -m nested
+		test_commit nested hello.world
 	) &&
 	(
 		cd bar &&
@@ -612,9 +606,7 @@ test_expect_success 'force removal of nested git work tree' '
 	(
 		cd baz/boo &&
 		git init &&
-		>deeper.world
-		git add . &&
-		git commit -a -m deeply.nested
+		test_commit deeply.nested deeper.world
 	) &&
 	git clean -f -f -d &&
 	! test -d foo &&

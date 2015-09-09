@@ -18,6 +18,7 @@
 #include "xdiff-interface.h"
 #include "ll-merge.h"
 #include "resolve-undo.h"
+#include "submodule-config.h"
 #include "submodule.h"
 
 static const char * const checkout_usage[] = {
@@ -280,7 +281,7 @@ static int checkout_paths(const struct checkout_opts *opts,
 	if (opts->source_tree)
 		read_tree_some(opts->source_tree, &opts->pathspec);
 
-	ps_matched = xcalloc(1, opts->pathspec.nr);
+	ps_matched = xcalloc(opts->pathspec.nr, 1);
 
 	/*
 	 * Make sure all pathspecs participated in locating the paths
