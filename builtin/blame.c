@@ -974,7 +974,10 @@ static void pass_blame_to_parent(struct scoreboard *sb,
 	fill_origin_blob(&sb->revs->diffopt, target, &file_o);
 	num_get_patch++;
 
-	diff_hunks(&file_p, &file_o, 0, blame_chunk_cb, &d);
+	if (diff_hunks(&file_p, &file_o, 0, blame_chunk_cb, &d))
+		die("unable to generate diff (%s -> %s)",
+		    sha1_to_hex(parent->commit->object.sha1),
+		    sha1_to_hex(target->commit->object.sha1));
 	/* The rest are the same as the parent */
 	blame_chunk(&d.dstq, &d.srcq, INT_MAX, d.offset, INT_MAX, parent);
 	*d.dstq = NULL;
@@ -1120,7 +1123,9 @@ static void find_copy_in_blob(struct scoreboard *sb,
 	 * file_p partially may match that image.
 	 */
 	memset(split, 0, sizeof(struct blame_entry [3]));
-	diff_hunks(file_p, &file_o, 1, handle_split_cb, &d);
+	if (diff_hunks(file_p, &file_o, 1, handle_split_cb, &d))
+		die("unable to generate diff (%s)",
+		    sha1_to_hex(parent->commit->object.sha1));
 	/* remainder, if any, all match the preimage */
 	handle_split(sb, ent, d.tlno, d.plno, ent->num_lines, parent, split);
 }
@@ -1366,8 +1371,15 @@ static void pass_whole_blame(struct scoreboard *sb,
  */
 static struct commit_list *first_scapegoat(struct rev_info *revs, struct commit *commit)
 {
-	if (!reverse)
+	if (!reverse) {
+		if (revs->first_parent_only &&
+		    commit->parents &&
+		    commit->parents->next) {
+			free_commit_list(commit->parents->next);
+			commit->parents->next = NULL;
+		}
 		return commit->parents;
+	}
 	return lookup_decoration(&revs->children, &commit->object);
 }
 
@@ -2600,7 +2612,6 @@ parse_done:
 		   fewer display columns. */
 		blame_date_width = utf8_strwidth(_("4 years, 11 months ago")) + 1; /* add the null */
 		break;
-	case DATE_LOCAL:
 	case DATE_NORMAL:
 		blame_date_width = sizeof("Thu Oct 19 16:00:04 2006 -0700");
 		break;
@@ -2680,6 +2691,8 @@ parse_done:
 	}
 	else if (contents_from)
 		die("--contents and --children do not blend well.");
+	else if (revs.first_parent_only)
+		die("combining --first-parent and --reverse is not supported");
 	else {
 		final_commit_name = prepare_initial(&sb);
 		sb.commits.compare = compare_commits_by_reverse_commit_date;
